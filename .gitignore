@@ -1,0 +1,14 @@
+# сборка Go
+api/api
+api/bin/
+*.test
+
+# рабочий мусор
+*.log
+*.tmp
+.env
+
+# корневые ФС для mount namespace: большие, не в git
+rootfs/
+*.tar
+*.tar.gz
