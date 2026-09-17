@@ -1,6 +1,6 @@
 # сборка Go
-api/api
-api/bin/
+**/api/api
+**/bin/
 *.test
 
 # рабочий мусор
@@ -9,6 +9,6 @@ api/bin/
 .env
 
 # корневые ФС для mount namespace: большие, не в git
-rootfs/
+**/rootfs/
 *.tar
 *.tar.gz
