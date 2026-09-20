@@ -1,0 +1,13 @@
+# Лабораторные: контейнеризация и оркестрация
+
+Работы по курсу [containerization-and-orchestration](https://github.com/KeladKaal/containerization-and-orchestration).
+
+| Лаба | Тема | Статус |
+|---|---|---|
+| [lab1-docker](lab1-docker/) | Свой Docker: namespaces, cgroups, права | готово |
+| [lab2-observability](lab2-observability/) | Мониторинг: метрики, логи, трейсы, алерты | готово |
+| [lab3-platform](lab3-platform/) | Платформа: политики, Helm, оператор БД, отказ control plane | готово |
+| [lab4-scheduling](lab4-scheduling/) | Планирование и ресурсы: разнесение, QoS, вытеснение, выселение, SLA | готово |
+
+Среда: Ubuntu 24.04 в Hyper-V, cgroup v2, Go 1.22, Docker 29.1.
+# Платформа Кварт
