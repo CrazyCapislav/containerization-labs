@@ -1,0 +1,6 @@
+FROM golang:1.22
+WORKDIR /src
+COPY api/ .
+RUN CGO_ENABLED=0 go build -o /api .
+EXPOSE 8080
+CMD ["/api"]
