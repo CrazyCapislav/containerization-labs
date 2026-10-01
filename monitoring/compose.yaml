@@ -1,0 +1,54 @@
+# Стек наблюдаемости: поднимается в лабе 1 и переиспользуется дальше по курсу.
+services:
+  # cAdvisor читает cgroup всех контейнеров и отдаёт метрики в формате Prometheus.
+  # Порт 8081, потому что 8080 занят сервисом api.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
+    container_name: cadvisor
+    privileged: true
+    # Docker 29 требует API >= 1.44; без этого cAdvisor не резолвит имена контейнеров.
+    environment:
+      DOCKER_API_VERSION: "1.44"
+    # Docker хранит свои контейнеры в containerd-namespace "moby", а не "k8s.io".
+    command:
+      - --housekeeping_interval=5s
+      - --store_container_labels=false
+    ports:
+      - "8081:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro                      # отсюда он и читает /sys/fs/cgroup
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom-data:/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    restart: unless-stopped
+
+volumes:
+  prom-data:
+  grafana-data:
