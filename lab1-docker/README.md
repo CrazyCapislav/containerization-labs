@@ -150,7 +150,7 @@ pids.current: 20 из 20
 pids.events:  max 232476
 ```
 
-![Запуск форк-бомбы](lab1-docker/docs/img/25-forkbomb-stress-ng.png)
+![Запуск форк-бомбы](docs/img/25-forkbomb-stress-ng.png)
 ![pids.current упёрся в потолок](docs/img/24-pids-current-at-max.png)
 
 232 476 отклонённых `fork` за десять секунд. Ядро возвращало `EAGAIN` на каждый, группа так и не выросла выше 20 задач, а система осталась полностью отзывчивой — вторая SSH-сессия работала без заминок.
