@@ -11,7 +11,7 @@ service:
   nodePort: 30003
 
 # Адрес коллектора трейсов. Заполняется, когда в части 3 появится Jaeger.
-otlpEndpoint: ""
+otlpEndpoint: "http://jaeger.monitoring.svc.cluster.local:4318"
 
 resources:
   requests:

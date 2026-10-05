@@ -21,6 +21,21 @@ grafana:
       url: http://loki.monitoring.svc.cluster.local:3100
       jsonData:
         maxLines: 1000
+        # Производное поле: Grafana вытаскивает trace_id из строки лога
+        # и превращает его в ссылку на трейс в Jaeger. Это и есть переход
+        # «от лога к трейсу», которого требует задание.
+        derivedFields:
+          - name: TraceID
+            matcherType: regex
+            matcherRegex: '"trace_id":"(\w+)"'
+            datasourceUid: jaeger
+            url: '$${__value.raw}'
+            urlDisplayLabel: Открыть трейс
+    - name: Jaeger
+      type: jaeger
+      uid: jaeger
+      access: proxy
+      url: http://jaeger.monitoring.svc.cluster.local:16686
   resources:
     requests:
       cpu: 50m

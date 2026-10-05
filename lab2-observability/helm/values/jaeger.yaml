@@ -1,0 +1,34 @@
+# Jaeger 2.x all-in-one: сборщик, хранилище в памяти и UI в одном поде.
+#
+# Важно: во второй версии Jaeger настройка идёт конфигурационным файлом, а не
+# переменными окружения. Привычные по первой версии COLLECTOR_OTLP_ENABLED и
+# SPAN_STORAGE_TYPE здесь просто игнорируются — приёмники OTLP (gRPC 4317 и
+# HTTP 4318) поднимаются по умолчанию, хранилище в памяти тоже используется
+# по умолчанию. Поэтому блок extraEnv не нужен.
+#
+# API запросов тоже переехал: в Jaeger 1.x это был /api/traces,
+# во 2.x — /api/v3/traces и /api/v3/services.
+
+provisionDataStore:
+  cassandra: false
+  elasticsearch: false
+  kafka: false
+
+allInOne:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+# Отдельные компоненты не нужны: их роль выполняет all-in-one.
+agent:
+  enabled: false
+collector:
+  enabled: false
+query:
+  enabled: false
+storage:
+  type: memory

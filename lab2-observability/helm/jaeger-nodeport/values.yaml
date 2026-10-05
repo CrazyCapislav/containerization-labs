@@ -1,0 +1,9 @@
+# Чарт jaegertracing/jaeger создаёт для all-in-one сервис только типа ClusterIP:
+# в его values у блока allInOne.service есть labels, annotations и extraPorts,
+# но нет type. Поэтому UI публикуется отдельным сервисом.
+nodePort: 30004
+uiPort: 16686
+selector:
+  app.kubernetes.io/name: jaeger
+  app.kubernetes.io/instance: jaeger
+  app.kubernetes.io/component: all-in-one
