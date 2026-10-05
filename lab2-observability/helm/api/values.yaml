@@ -1,0 +1,28 @@
+replicaCount: 2
+
+image:
+  repository: api
+  tag: v1
+  # Образ загружен в ноды через `k3d image import`, во внешнем реестре его нет.
+  pullPolicy: IfNotPresent
+
+service:
+  port: 8080
+  nodePort: 30003
+
+# Адрес коллектора трейсов. Заполняется, когда в части 3 появится Jaeger.
+otlpEndpoint: ""
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# ServiceMonitor требует CRD из kube-prometheus-stack.
+# Включается после установки стека мониторинга.
+serviceMonitor:
+  enabled: false
+  interval: 10s

@@ -1,0 +1,76 @@
+# kube-prometheus-stack: Prometheus + Grafana + Alertmanager + операторы.
+# Порты NodePort из диапазона 30000-30010, проброшенного с хоста k3d.
+
+grafana:
+  adminPassword: admin
+  service:
+    type: NodePort
+    nodePort: 30000
+  grafana.ini:
+    auth.anonymous:
+      enabled: true
+      org_role: Admin
+    users:
+      default_theme: dark
+  # Источник Loki добавится в части 2.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+prometheus:
+  service:
+    type: NodePort
+    nodePort: 30001
+  prometheusSpec:
+    # По умолчанию оператор берёт только те ServiceMonitor, у которых метка
+    # релиза совпадает с его собственной. Наш чарт api ставится отдельно,
+    # поэтому выключаем это правило, иначе его метрики не попадут в сбор.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    # Короткий интервал: нагрузка в лабе всплесками, на 30 секундах
+    # пики RED просто не попадут в выборку.
+    scrapeInterval: 10s
+    evaluationInterval: 10s
+    retention: 2d
+    resources:
+      requests:
+        cpu: 100m
+        memory: 400Mi
+      limits:
+        memory: 1Gi
+
+alertmanager:
+  service:
+    type: NodePort
+    nodePort: 30002
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+
+# В k3s компоненты control plane не выставлены отдельными сервисами:
+# оставленные включёнными, они дают вечно падающие цели сбора.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi

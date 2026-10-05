@@ -1,0 +1,6 @@
+apiVersion: v2
+name: api
+description: Подопытный сервис лабы 2 — метрики RED, JSON-логи с trace_id, трейсы OTLP
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
