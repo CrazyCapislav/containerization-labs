@@ -12,7 +12,15 @@ grafana:
       org_role: Admin
     users:
       default_theme: dark
-  # Источник Loki добавится в части 2.
+  # Loki подключается источником данных здесь, а не руками в интерфейсе:
+  # иначе настройка живёт только в базе Grafana и теряется при пересоздании.
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      access: proxy
+      url: http://loki.monitoring.svc.cluster.local:3100
+      jsonData:
+        maxLines: 1000
   resources:
     requests:
       cpu: 50m

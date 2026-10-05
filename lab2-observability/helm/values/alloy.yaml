@@ -1,0 +1,89 @@
+# Grafana Alloy — агент сбора логов. Ставится DaemonSet'ом, то есть по поду
+# на каждую ноду: логи контейнеров лежат на тех нодах, где контейнеры работают,
+# и собирать их централизованно неоткуда.
+controller:
+  type: daemonset
+
+alloy:
+  configMap:
+    content: |
+      // Находим все поды кластера через API Kubernetes.
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      // Превращаем служебные метки Kubernetes в человекочитаемые.
+      // Без этого в Loki приедут метки вида __meta_kubernetes_pod_name.
+      discovery.relabel "pods" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app"]
+          target_label  = "app"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_node_name"]
+          target_label  = "node"
+        }
+      }
+
+      // Читаем логи через API Kubernetes, а не из файлов на ноде:
+      // не нужно монтировать hostPath и гадать о путях к логам контейнеров.
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.pods.output
+        forward_to = [loki.process.json.receiver]
+      }
+
+      loki.process "json" {
+        forward_to = [loki.write.default.receiver]
+
+        // Сервис пишет структурированные логи, разбираем их.
+        stage.json {
+          expressions = {
+            level    = "level",
+            trace_id = "trace_id",
+            path     = "path",
+            status   = "status",
+          }
+        }
+
+        // level становится меткой: значений мало, по нему удобно фильтровать.
+        stage.labels {
+          values = {
+            level = "",
+          }
+        }
+
+        // trace_id в метки не годится: уникален для каждого запроса, и индекс
+        // Loki распух бы мгновенно. Структурированные метаданные для того и есть.
+        stage.structured_metadata {
+          values = {
+            trace_id = "",
+          }
+        }
+      }
+
+      loki.write "default" {
+        endpoint {
+          url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
+        }
+      }
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
