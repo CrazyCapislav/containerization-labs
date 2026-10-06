@@ -1,0 +1,82 @@
+{{- if .Values.monitoring.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "shop.labels" (dict "name" "shop" "partOf" .Values.partOf "release" .Release.Name) | nindent 4 }}
+spec:
+  # Один ServiceMonitor на оба сервиса: отбор идёт по общей метке part-of,
+  # которую и так требует политика require-labels.
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: {{ .Values.partOf }}
+  namespaceSelector:
+    matchNames: [{{ .Release.Namespace }}]
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.monitoring.serviceMonitor.interval }}
+{{- end }}
+---
+{{- if .Values.monitoring.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "shop.labels" (dict "name" "shop" "partOf" .Values.partOf "release" .Release.Name) | nindent 4 }}
+spec:
+  groups:
+    - name: shop.critical
+      rules:
+        # 1. База недоступна приложению.
+        # Ловит то, чего Kubernetes не видит в принципе: пробы готовности
+        # намеренно не зависят от базы, поэтому при её отказе поды остаются
+        # Running и Ready, кластер считает всё исправным, а заказы не создаются.
+        - alert: ShopDatabaseUnavailable
+          expr: min(shop_db_up) == 0
+          for: 1m
+          labels:
+            severity: critical
+            service: shop
+          annotations:
+            summary: "Приложение shop не видит базу данных"
+            description: "Метрика shop_db_up равна нулю минуту подряд хотя бы у одного пода."
+            impact: "Заказы не создаются и не читаются: POST /order и GET /orders отвечают 503."
+            action: "kubectl get cluster -n shop; смотреть состояние объекта CloudNativePG и логи оператора. Поды приложения при этом выглядят здоровыми, искать надо в базе."
+
+        # 2. Очередь заказов растёт.
+        # Признак того, что worker не справляется или встал. Сигнал бизнесовый,
+        # а не инфраструктурный: все поды здоровы, а заказы не обрабатываются.
+        - alert: ShopOrdersBacklogGrowing
+          expr: max(shop_orders_pending) > 20
+          for: 5m
+          labels:
+            severity: critical
+            service: shop
+          annotations:
+            summary: "Накопилась очередь необработанных заказов"
+            description: "Больше 20 заказов ждут обработки дольше пяти минут."
+            impact: "Клиенты оформили заказы, но они не двигаются дальше по процессу."
+            action: "Проверить worker: поднять replicaCount или уменьшить intervalSeconds. Если очередь растёт при работающем worker, искать замедление в базе."
+
+        # 3. Worker жив, но не работает.
+        # Процесс отвечает на пробы, Kubernetes доволен, а циклы обработки
+        # не выполняются. Классический зависший воркер, которого не видно
+        # ни по состоянию пода, ни по перезапускам.
+        - alert: ShopWorkerStalled
+          expr: |
+            sum(rate(shop_worker_cycles_total[5m])) == 0
+            and
+            sum(up{job=~".*worker.*"}) > 0
+          for: 5m
+          labels:
+            severity: critical
+            service: shop
+          annotations:
+            summary: "Worker не выполняет циклы обработки"
+            description: "Счётчик shop_worker_cycles_total не растёт пять минут, при этом поды worker отвечают на сбор метрик."
+            impact: "Заказы не обрабатываются, хотя внешне всё исправно."
+            action: "Посмотреть логи worker: вероятно, он завис на обращении к базе. Перезапуск пода вернёт обработку, но причину надо искать в логах."
+{{- end }}
