@@ -1,0 +1,39 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resources
+  annotations:
+    policies.kyverno.io/title: Обязательные ресурсы
+    policies.kyverno.io/description: >-
+      Каждый контейнер обязан объявить requests по CPU и памяти и limit по памяти.
+      Без requests планировщик не знает, сколько места занимает под, и раскладывает
+      их вслепую. Без limit по памяти один протёкший процесс утаскивает ноду целиком,
+      потому что память несжимаема: отобрать её у процесса нельзя, можно только убить.
+      Лимит по CPU намеренно не требуется: процессорное время сжимаемо, и жёсткий
+      потолок приводит к троттлингу даже при свободных ядрах.
+spec:
+  background: true
+  rules:
+    - name: check-container-resources
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, kube-public, kube-node-lease, kyverno, monitoring, demo, cnpg-system]
+      validate:
+        failureAction: Enforce
+        message: >-
+          Контейнер обязан объявить resources.requests.cpu, resources.requests.memory
+          и resources.limits.memory.
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    memory: "?*"

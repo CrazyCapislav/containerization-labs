@@ -1,0 +1,38 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged
+  annotations:
+    policies.kyverno.io/title: Запрет привилегированных контейнеров
+    policies.kyverno.io/description: >-
+      Запрещены privileged-контейнеры и повышение привилегий внутри процесса.
+      Privileged отключает почти всю изоляцию разом: контейнер получает полный
+      набор capabilities и доступ к устройствам хоста, то есть фактически
+      становится процессом хоста с другим корнем файловой системы. Побег из
+      такого контейнера не требует уязвимости, он штатно возможен.
+spec:
+  background: true
+  rules:
+    - name: check-privileged
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, kube-public, kube-node-lease, kyverno, monitoring, demo, cnpg-system]
+      validate:
+        failureAction: Enforce
+        message: >-
+          privileged и allowPrivilegeEscalation запрещены.
+        pattern:
+          spec:
+            =(initContainers):
+              - =(securityContext):
+                  =(privileged): "false"
+                  =(allowPrivilegeEscalation): "false"
+            containers:
+              - =(securityContext):
+                  =(privileged): "false"
+                  =(allowPrivilegeEscalation): "false"

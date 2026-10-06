@@ -1,0 +1,24 @@
+# Нарушает disallow-privileged: контейнер просит привилегированный режим.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-privileged
+  namespace: shop
+  labels:
+    app.kubernetes.io/name: bad-privileged
+    app.kubernetes.io/part-of: shop
+spec:
+  containers:
+    - name: app
+      image: shop-api:v1
+      securityContext:
+        privileged: true
+      resources:
+        requests: { cpu: 10m, memory: 32Mi }
+        limits: { memory: 64Mi }
+      readinessProbe:
+        httpGet: { path: /health, port: 8080 }
+        periodSeconds: 5
+      livenessProbe:
+        httpGet: { path: /health, port: 8080 }
+        periodSeconds: 10

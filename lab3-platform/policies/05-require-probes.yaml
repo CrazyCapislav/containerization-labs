@@ -1,0 +1,36 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-probes
+  annotations:
+    policies.kyverno.io/title: Обязательные пробы (своё правило)
+    policies.kyverno.io/description: >-
+      Каждый контейнер обязан иметь readinessProbe и livenessProbe. Без readiness
+      Kubernetes отправляет трафик в под сразу после старта, ещё до того как тот
+      готов отвечать, и выкатка новой версии роняет часть запросов. Без liveness
+      зависший процесс остаётся в балансировке навсегда: он жив с точки зрения
+      ядра, но ничего не обслуживает. Это правило напрямую обеспечивает то,
+      что проверяется в Части 2.
+spec:
+  background: true
+  rules:
+    - name: check-probes
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, kube-public, kube-node-lease, kyverno, monitoring, demo, cnpg-system]
+      validate:
+        failureAction: Enforce
+        message: >-
+          Контейнер обязан иметь readinessProbe и livenessProbe.
+        pattern:
+          spec:
+            containers:
+              - readinessProbe:
+                  periodSeconds: ">0"
+                livenessProbe:
+                  periodSeconds: ">0"

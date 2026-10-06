@@ -1,0 +1,33 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-labels
+  annotations:
+    policies.kyverno.io/title: Обязательные метки
+    policies.kyverno.io/description: >-
+      Поды обязаны нести стандартные метки app.kubernetes.io/name и
+      app.kubernetes.io/part-of. Метки это единственный способ связать объект
+      с владельцем и приложением: по ним работают выборки сервисов, сбор метрик
+      через ServiceMonitor, сетевые политики и отчёты о затратах. Под без меток
+      невозможно ни найти, ни отнести к команде, когда он начнёт мешать.
+spec:
+  background: true
+  rules:
+    - name: check-standard-labels
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, kube-public, kube-node-lease, kyverno, monitoring, demo, cnpg-system]
+      validate:
+        failureAction: Enforce
+        message: >-
+          Обязательны метки app.kubernetes.io/name и app.kubernetes.io/part-of.
+        pattern:
+          metadata:
+            labels:
+              app.kubernetes.io/name: "?*"
+              app.kubernetes.io/part-of: "?*"

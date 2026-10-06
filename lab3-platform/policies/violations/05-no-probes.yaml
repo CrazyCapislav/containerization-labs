@@ -1,0 +1,16 @@
+# Нарушает require-probes (своё правило): нет проб готовности и живости.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-no-probes
+  namespace: shop
+  labels:
+    app.kubernetes.io/name: bad-no-probes
+    app.kubernetes.io/part-of: shop
+spec:
+  containers:
+    - name: app
+      image: shop-api:v1
+      resources:
+        requests: { cpu: 10m, memory: 32Mi }
+        limits: { memory: 64Mi }

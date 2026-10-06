@@ -1,0 +1,22 @@
+# Нарушает restrict-image-registries: образ из недоверенного источника.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-foreign-image
+  namespace: shop
+  labels:
+    app.kubernetes.io/name: bad-foreign-image
+    app.kubernetes.io/part-of: shop
+spec:
+  containers:
+    - name: app
+      image: docker.io/library/nginx:1.27
+      resources:
+        requests: { cpu: 10m, memory: 32Mi }
+        limits: { memory: 64Mi }
+      readinessProbe:
+        httpGet: { path: /, port: 80 }
+        periodSeconds: 5
+      livenessProbe:
+        httpGet: { path: /, port: 80 }
+        periodSeconds: 10

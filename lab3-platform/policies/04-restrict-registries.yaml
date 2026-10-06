@@ -1,0 +1,34 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+  annotations:
+    policies.kyverno.io/title: Только доверенные источники образов
+    policies.kyverno.io/description: >-
+      Образы разрешены только из перечисленных источников. Образ это исполняемый
+      код, который кластер запускает с правами сервисного аккаунта пода. Произвольный
+      реестр означает произвольный код: подменённый образ, опечатка в имени
+      (typosquatting) или скомпрометированный публичный репозиторий приводят
+      к выполнению чужого кода внутри периметра.
+spec:
+  background: true
+  rules:
+    - name: check-registry
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, kube-public, kube-node-lease, kyverno, monitoring, demo, cnpg-system]
+      validate:
+        failureAction: Enforce
+        message: >-
+          Разрешены образы shop-*, ghcr.io/*, quay.io/*, registry.k8s.io/*.
+        pattern:
+          spec:
+            =(initContainers):
+              - image: "shop-* | ghcr.io/* | quay.io/* | registry.k8s.io/*"
+            containers:
+              - image: "shop-* | ghcr.io/* | quay.io/* | registry.k8s.io/*"
