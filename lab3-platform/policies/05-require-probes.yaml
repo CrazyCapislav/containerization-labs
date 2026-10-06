@@ -4,6 +4,12 @@ metadata:
   name: require-probes
   annotations:
     policies.kyverno.io/title: Обязательные пробы (своё правило)
+    # Kyverno сам размножает правило, написанное для Pod, на все контроллеры,
+    # которые создают поды. По умолчанию в список попадают Job и CronJob,
+    # и правило начинает требовать пробы от разовых задач. Для них это
+    # бессмысленно: задача отрабатывает и завершается, проверять нечего.
+    # Поэтому автогенерация ограничена долгоживущими нагрузками.
+    pod-policies.kyverno.io/autogen-controllers: Deployment,StatefulSet,DaemonSet
     policies.kyverno.io/description: >-
       Каждый контейнер обязан иметь readinessProbe и livenessProbe. Без readiness
       Kubernetes отправляет трафик в под сразу после старта, ещё до того как тот
@@ -23,6 +29,14 @@ spec:
         any:
           - resources:
               namespaces: [kube-system, kube-public, kube-node-lease, kyverno, monitoring, demo, cnpg-system]
+      # Ограничения автогенерации недостаточно: Job создаёт поды сам, и они
+      # проверяются базовым правилом напрямую. Поды разовых задач исключаются
+      # по владельцу, а не по меткам конкретного оператора: правило общее.
+      preconditions:
+        all:
+          - key: "{{ request.object.metadata.ownerReferences[0].kind || '' }}"
+            operator: NotEquals
+            value: Job
       validate:
         failureAction: Enforce
         message: >-

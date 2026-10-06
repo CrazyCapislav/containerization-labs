@@ -56,8 +56,19 @@ database:
 
 postgres:
   enabled: false
+  # Имя объекта Cluster. Оператор создаёт секрет приложения с именем
+  # <clusterName>-app, поэтому database.secretName должен ему соответствовать.
+  clusterName: shop-db
   instances: 1
+  database: shop
+  owner: shop
   storageSize: 1Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
 
 monitoring:
   serviceMonitor:

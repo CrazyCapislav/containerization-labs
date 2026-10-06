@@ -1,0 +1,39 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.postgres.clusterName }}
+  labels:
+    {{- include "shop.labels" (dict "name" "postgres" "partOf" .Values.partOf "release" .Release.Name) | nindent 4 }}
+spec:
+  instances: {{ .Values.postgres.instances }}
+
+  # Поды базы создаёт оператор, а не этот чарт, и своих меток
+  # app.kubernetes.io/* он не проставляет. Без inheritedMetadata политика
+  # require-labels отклонила бы их, и кластер не поднялся бы вовсе.
+  inheritedMetadata:
+    labels:
+      {{- include "shop.labels" (dict "name" "postgres" "partOf" .Values.partOf "release" .Release.Name) | nindent 6 }}
+
+  bootstrap:
+    initdb:
+      database: {{ .Values.postgres.database }}
+      owner: {{ .Values.postgres.owner }}
+
+  storage:
+    size: {{ .Values.postgres.storageSize }}
+
+  # Лимит только по памяти, как требует политика require-resources.
+  resources:
+    requests:
+      cpu: {{ .Values.postgres.resources.requests.cpu }}
+      memory: {{ .Values.postgres.resources.requests.memory }}
+    limits:
+      memory: {{ .Values.postgres.resources.limits.memory }}
+
+  postgresql:
+    parameters:
+      # Учебный кластер на одной ноде: гонять WAL с запасом незачем.
+      max_connections: "100"
+      shared_buffers: 64MB
+{{- end }}
