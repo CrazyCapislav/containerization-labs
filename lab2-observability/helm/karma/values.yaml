@@ -1,0 +1,7 @@
+image: ghcr.io/prymitive/karma:v0.120
+nodePort: 30005
+port: 8080
+# Karma не хранит состояние: она опрашивает Alertmanager и показывает
+# его алерты с группировкой и фильтрами. Штатный интерфейс Alertmanager
+# для наблюдения за множеством алертов неудобен, Karma решает ровно это.
+alertmanagerUri: http://kps-kube-prometheus-stack-alertmanager.monitoring:9093

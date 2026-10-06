@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-webhook
+  labels:
+    app: alert-webhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alert-webhook
+  template:
+    metadata:
+      labels:
+        app: alert-webhook
+    spec:
+      containers:
+        - name: echo
+          image: {{ .Values.image | quote }}
+          env:
+            - name: HTTP_PORT
+              value: {{ .Values.port | quote }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.port }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-webhook
+  labels:
+    app: alert-webhook
+spec:
+  selector:
+    app: alert-webhook
+  ports:
+    - name: http
+      port: {{ .Values.port }}
+      targetPort: http

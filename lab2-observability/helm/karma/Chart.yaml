@@ -1,0 +1,5 @@
+apiVersion: v2
+name: karma
+description: Веб-дашборд активных алертов поверх Alertmanager
+type: application
+version: 0.1.0

@@ -74,6 +74,90 @@ alertmanager:
       requests:
         cpu: 20m
         memory: 64Mi
+  config:
+    global:
+      resolve_timeout: 2m
+    route:
+      group_by: ["alertname"]
+      # Короткие интервалы: в лабе нужно увидеть доставку за минуты,
+      # а не ждать стандартных пяти минут группировки.
+      group_wait: 10s
+      group_interval: 30s
+      repeat_interval: 1h
+      receiver: webhook
+      routes:
+        # Watchdog — служебный алерт, который kube-prometheus-stack держит
+        # постоянно включённым, чтобы было видно, что цепочка жива.
+        # В webhook его слать незачем, иначе он забьёт всё остальное.
+        - matchers:
+            - alertname = "Watchdog"
+          receiver: "null"
+    receivers:
+      - name: "null"
+      - name: webhook
+        webhook_configs:
+          - url: http://alert-webhook.monitoring.svc.cluster.local:8080/
+            send_resolved: true
+
+# Правила алертов. Все три — про боль пользователя, а не про жёлтые графики.
+additionalPrometheusRulesMap:
+  api-critical:
+    groups:
+      - name: api.critical
+        rules:
+          - alert: ApiHighErrorRate
+            # Второе условие — защита от ложных срабатываний на низком трафике:
+            # одна ошибка при трёх запросах в минуту даёт 33% и разбудит дежурного
+            # зря. Алерт имеет смысл только когда трафик вообще есть.
+            expr: |
+              (
+                sum(rate(http_request_errors_total{job="api"}[2m]))
+                /
+                sum(rate(http_requests_total{job="api"}[2m]))
+              ) > 0.05
+              and
+              sum(rate(http_requests_total{job="api"}[2m])) > 1
+            for: 2m
+            labels:
+              severity: critical
+              service: api
+            annotations:
+              summary: "Сервис api отдаёт более 5% ошибок"
+              description: "Доля ответов 5xx держится выше 5% уже две минуты при значимом трафике."
+              impact: "Каждый двадцатый пользователь получает ошибку вместо ответа."
+              action: "Посмотреть логи ошибок в Grafana по {app=\"api\", level=\"ERROR\"}, оттуда перейти в трейс и найти падающий шаг. При недавнем релизе — откатить."
+          - alert: ApiHighLatency
+            # Ручка /slow исключена намеренно: она медленная по замыслу,
+            # и без исключения алерт горел бы постоянно, превратившись в шум.
+            # Процентиль считается по каждой ручке отдельно. Сводный p95 по всем
+            # эндпоинтам бесполезен: быстрых запросов на порядки больше, и медленная
+            # ручка в общей выборке просто не доживает до 95-го процентиля.
+            expr: |
+              histogram_quantile(0.95,
+                sum by (le, path) (rate(http_request_duration_seconds_bucket{job="api", path!="/slow"}[5m]))
+              ) > 0.5
+            for: 3m
+            labels:
+              severity: critical
+              service: api
+            annotations:
+              summary: "p95 времени ответа api превысил 500 мс"
+              description: "95-й процентиль по всем ручкам кроме /slow держится выше полусекунды три минуты подряд."
+              impact: "Каждый двадцатый запрос обслуживается заметно дольше обычного; вызывающие сервисы начнут ловить таймауты."
+              action: "Сравнить с панелью Rate: если выросла нагрузка — вопрос ёмкости. Если нет — искать по трейсам в Jaeger, на каком шаге появилось время."
+          - alert: ApiDown
+            # or vector(0) обязателен: при исчезновении всех целей ряд up
+            # пропадает совсем, и сравнение с нулём не сработало бы.
+            expr: (sum(up{job="api"}) or vector(0)) == 0
+            for: 1m
+            labels:
+              severity: critical
+              service: api
+            annotations:
+              summary: "Сервис api не отвечает"
+              description: "Prometheus не может снять метрики ни с одного пода api в течение минуты."
+              impact: "Сервис недоступен полностью."
+              action: "kubectl get pods -n demo; смотреть события и логи подов, проверять лимиты памяти и состояние нод."
 
 # В k3s компоненты control plane не выставлены отдельными сервисами:
 # оставленные включёнными, они дают вечно падающие цели сбора.

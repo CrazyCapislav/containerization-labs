@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: karma
+  labels:
+    app: karma
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: karma
+  template:
+    metadata:
+      labels:
+        app: karma
+    spec:
+      containers:
+        - name: karma
+          image: {{ .Values.image | quote }}
+          env:
+            - name: ALERTMANAGER_URI
+              value: {{ .Values.alertmanagerUri | quote }}
+            - name: LISTEN_PORT
+              value: {{ .Values.port | quote }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.port }}
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: karma
+  labels:
+    app: karma
+spec:
+  type: NodePort
+  selector:
+    app: karma
+  ports:
+    - name: http
+      port: {{ .Values.port }}
+      targetPort: http
+      nodePort: {{ .Values.nodePort }}
