@@ -1,0 +1,67 @@
+# Общие метки проставляются всем объектам: их требует политика require-labels.
+partOf: shop
+
+api:
+  replicaCount: 3
+  image:
+    repository: shop-api
+    tag: v4
+    # Образы импортированы в ноды через k3d image import, во внешнем реестре их нет.
+    pullPolicy: IfNotPresent
+  version: "4"
+  # Сколько секунд процесс продолжает обслуживать запросы после SIGTERM.
+  # Нужно, чтобы правила маршрутизации на нодах успели убрать под из
+  # балансировки раньше, чем он закроет сокет.
+  shutdownDelaySeconds: 5
+  # Должно быть заметно больше задержки, иначе Kubernetes убьёт под раньше.
+  terminationGracePeriodSeconds: 25
+  # Переключатель для Части 2: заставляет /health отвечать 503,
+  # чтобы показать остановку выкатки сломанной версии.
+  healthFail: false
+  service:
+    port: 8080
+    nodePort: 30006
+  resources:
+    requests:
+      cpu: 20m
+      memory: 48Mi
+    limits:
+      # Лимит только по памяти: политика require-resources намеренно
+      # не требует потолка по CPU, чтобы не получать троттлинг.
+      memory: 192Mi
+
+worker:
+  replicaCount: 2
+  image:
+    repository: shop-worker
+    tag: v1
+    pullPolicy: IfNotPresent
+  version: "1"
+  intervalSeconds: 5
+  batchSize: 10
+  service:
+    port: 8081
+  resources:
+    requests:
+      cpu: 20m
+      memory: 48Mi
+    limits:
+      memory: 192Mi
+
+# Подключение к базе. Имя секрета соответствует тому, что создаёт
+# CloudNativePG для кластера с именем postgres.cluster (Часть 3).
+database:
+  secretName: shop-db-app
+  secretKey: uri
+
+postgres:
+  enabled: false
+  instances: 1
+  storageSize: 1Gi
+
+monitoring:
+  serviceMonitor:
+    enabled: false
+    interval: 15s
+  prometheusRule:
+    enabled: false

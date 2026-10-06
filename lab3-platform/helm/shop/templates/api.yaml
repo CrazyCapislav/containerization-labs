@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-api
+  labels:
+    {{- include "shop.labels" (dict "name" "api" "partOf" .Values.partOf "release" .Release.Name) | nindent 4 }}
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "shop.selectorLabels" (dict "name" "api" "release" .Release.Name) | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Обновляем по одному поду и не опускаемся ниже полного состава:
+      # так во время выкатки сервис продолжает отвечать без просадки.
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "shop.labels" (dict "name" "api" "partOf" .Values.partOf "release" .Release.Name) | nindent 8 }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.api.terminationGracePeriodSeconds }}
+      containers:
+        - name: api
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.service.port }}
+          env:
+            - name: ADDR
+              value: ":{{ .Values.api.service.port }}"
+            - name: APP_VERSION
+              value: {{ .Values.api.version | quote }}
+            - name: HEALTH_FAIL
+              value: {{ .Values.api.healthFail | quote }}
+            - name: SHUTDOWN_DELAY_SECONDS
+              value: {{ .Values.api.shutdownDelaySeconds | quote }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{- if .Values.postgres.enabled }}
+            # Строку подключения берём из секрета, который создаёт оператор:
+            # пароль генерируется им, в чарте его быть не должно.
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.secretName }}
+                  key: {{ .Values.database.secretKey }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-api
+  labels:
+    {{- include "shop.labels" (dict "name" "api" "partOf" .Values.partOf "release" .Release.Name) | nindent 4 }}
+spec:
+  type: NodePort
+  selector:
+    {{- include "shop.selectorLabels" (dict "name" "api" "release" .Release.Name) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.api.service.port }}
+      targetPort: http
+      nodePort: {{ .Values.api.service.nodePort }}

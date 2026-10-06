@@ -1,0 +1,6 @@
+apiVersion: v2
+name: shop
+description: Интернет-магазин shop — api, worker и postgres через оператора
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

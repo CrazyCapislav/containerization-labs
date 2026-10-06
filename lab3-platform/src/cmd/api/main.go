@@ -220,7 +220,24 @@ func main() {
 	}()
 
 	<-ctx.Done()
-	slog.Info("получен сигнал, завершаюсь")
+
+	// Задержка перед остановкой. Kubernetes шлёт SIGTERM и убирает под из
+	// endpoints одновременно, но правила маршрутизации на нодах обновляются
+	// асинхронно. Если закрыть сокет сразу, часть трафика прилетит в уже
+	// мёртвый под и клиент получит отказ соединения. Обычно для этого
+	// используют хук preStop со sleep, но образ собран из scratch,
+	// где нет ни шелла, ни sleep, поэтому задержка реализована здесь.
+	delay := 5 * time.Second
+	if v := os.Getenv("SHUTDOWN_DELAY_SECONDS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			delay = time.Duration(n) * time.Second
+		}
+	}
+	slog.Info("получен сигнал, продолжаю обслуживать до истечения задержки",
+		"delay_seconds", int(delay.Seconds()))
+	time.Sleep(delay)
+
+	slog.Info("завершаюсь")
 	sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(sctx)
