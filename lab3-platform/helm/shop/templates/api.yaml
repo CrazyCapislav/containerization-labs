@@ -22,6 +22,8 @@ spec:
         {{- include "shop.labels" (dict "name" "api" "partOf" .Values.partOf "release" .Release.Name) | nindent 8 }}
     spec:
       terminationGracePeriodSeconds: {{ .Values.api.terminationGracePeriodSeconds }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
       containers:
         - name: api
           image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"

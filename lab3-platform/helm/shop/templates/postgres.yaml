@@ -15,6 +15,10 @@ spec:
     labels:
       {{- include "shop.labels" (dict "name" "postgres" "partOf" .Values.partOf "release" .Release.Name) | nindent 6 }}
 
+  affinity:
+    nodeSelector:
+      {{- toYaml .Values.nodeSelector | nindent 6 }}
+
   bootstrap:
     initdb:
       database: {{ .Values.postgres.database }}
