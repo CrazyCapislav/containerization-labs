@@ -1,0 +1,42 @@
+
+
+  █ THRESHOLDS 
+
+    http_req_duration{path:order}
+    ✗ 'p(95)<300' p(95)=2.01s
+
+    http_req_failed{path:order}
+    ✓ 'rate<0.01' rate=0.00%
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 23932  39.806664/s
+    checks_succeeded...: 99.99% 23930 out of 23932
+    checks_failed......: 0.00%  2 out of 23932
+
+    ✗ заказ создан (201)
+      ↳  99% — ✓ 23930 / ✗ 2
+
+    HTTP
+    http_req_duration..............: avg=704.15ms min=410.51µs med=527.5ms  max=5.01s p(90)=1.5s  p(95)=1.95s
+      { expected_response:true }...: avg=703.83ms min=410.51µs med=527.49ms max=4.98s p(90)=1.5s  p(95)=1.95s
+      { path:order }...............: avg=750.2ms  min=14.79ms  med=568.06ms max=5.01s p(90)=1.57s p(95)=2.01s
+    http_req_failed................: 0.00%  2 out of 26366
+      { path:order }...............: 0.00%  2 out of 23932
+    http_reqs......................: 26366  43.855194/s
+
+    EXECUTION
+    dropped_iterations.............: 69     0.114769/s
+    iteration_duration.............: avg=775.96ms min=14.89ms  med=586ms    max=5.8s  p(90)=1.61s p(95)=2.07s
+    iterations.....................: 23932  39.806664/s
+    vus............................: 10     min=8          max=86
+    vus_max........................: 89     min=30         max=89
+
+    NETWORK
+    data_received..................: 19 MB  32 kB/s
+    data_sent......................: 4.2 MB 6.9 kB/s
+
+
+
+time="2026-10-12T14:09:13Z" level=error msg="thresholds on metrics 'http_req_duration{path:order}' have been crossed"

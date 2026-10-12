@@ -1,0 +1,24 @@
+### Часть 9: алерт в состоянии firing
+
+## Правила, загруженные в Prometheus
+  группа shop.critical
+     ShopDatabaseUnavailable        inactive
+     ShopOrdersBacklogGrowing       firing
+     ShopWorkerStalled              inactive
+  группа shop.resources
+     ShopCriticalPodPending         firing
+     ShopCriticalPathThrottled      inactive
+     ShopOrderLatencySLOBreach      inactive
+
+## Чем спровоцирован
+  helm upgrade --set api.resources.requests.cpu=5000m --set api.resources.limits.cpu=5000m
+  Запрос больше, чем allocatable любой ноды, поэтому вытеснение не помогает:
+0/2 nodes are available: 2 node(s) had untolerated taint(s). no new claims to deallocate, preemption: 0/2 nodes are available: 2 Preemption is not helpful for scheduling.
+
+## Активные алерты в Alertmanager
+  NodeCPUHighUsage               severity=info      suppressed
+  ShopCriticalPodPending         severity=critical  active
+  Watchdog                       severity=none      active
+  InfoInhibitor                  severity=none      suppressed
+  NodeCPUHighUsage               severity=info      suppressed
+  ShopOrdersBacklogGrowing       severity=critical  active

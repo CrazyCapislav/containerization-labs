@@ -1,0 +1,93 @@
+{{- if .Values.batch.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-batch
+  labels:
+    {{- include "shop.labels" (dict "name" "batch" "partOf" .Values.partOf "release" .Release.Name) | nindent 4 }}
+spec:
+  replicas: {{ .Values.batch.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "shop.selectorLabels" (dict "name" "batch" "release" .Release.Name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "shop.labels" (dict "name" "batch" "partOf" .Values.partOf "release" .Release.Name) | nindent 8 }}
+    spec:
+      # Фоновая аналитика не держит соединений и не имеет состояния:
+      # гасим быстро, в отличие от api с его задержкой на вывод из балансировки.
+      terminationGracePeriodSeconds: {{ .Values.batch.terminationGracePeriodSeconds }}
+      {{- $sel := ternary .Values.batch.nodeSelector .Values.nodeSelector (hasKey .Values.batch "nodeSelector") }}
+      {{- if $sel }}
+      nodeSelector:
+        {{- toYaml $sel | nindent 8 }}
+      {{- end }}
+      {{- if .Values.batch.priorityClassName }}
+      priorityClassName: {{ .Values.batch.priorityClassName }}
+      {{- end }}
+      containers:
+        - name: batch
+          image: "{{ .Values.batch.image.repository }}:{{ .Values.batch.image.tag }}"
+          imagePullPolicy: {{ .Values.batch.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.batch.service.port }}
+          env:
+            - name: BATCH_ADDR
+              value: ":{{ .Values.batch.service.port }}"
+            - name: BATCH_CPU_WORKERS
+              value: {{ .Values.batch.load.cpuWorkers | quote }}
+            - name: BATCH_CPU_DUTY_PERCENT
+              value: {{ .Values.batch.load.cpuDutyPercent | quote }}
+            - name: BATCH_MEM_MB
+              value: {{ .Values.batch.load.memMB | quote }}
+            - name: BATCH_MEM_GROWTH_MB_PER_SEC
+              value: {{ .Values.batch.load.memGrowthMBPerSec | quote }}
+            - name: BATCH_MEM_MAX_MB
+              value: {{ .Values.batch.load.memMaxMB | quote }}
+          # Пробы намеренно щадящие. Под процессорным лимитом обработчик
+          # отвечает медленнее, и жёсткие пороги привели бы к перезапуску
+          # контейнера по liveness. В эксперименте это выглядело бы как
+          # вытеснение, хотя причина совсем другая.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.batch.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-batch
+  labels:
+    {{- include "shop.labels" (dict "name" "batch" "partOf" .Values.partOf "release" .Release.Name) | nindent 4 }}
+spec:
+  # Порт назван http, чтобы существующий ServiceMonitor подобрал batch
+  # тем же правилом, что api и worker, без отдельной записи.
+  selector:
+    {{- include "shop.selectorLabels" (dict "name" "batch" "release" .Release.Name) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.batch.service.port }}
+      targetPort: http
+{{- end }}

@@ -1,0 +1,40 @@
+
+
+  █ THRESHOLDS 
+
+    http_req_duration{path:order}
+    ✓ 'p(95)<300' p(95)=67.69ms
+
+    http_req_failed{path:order}
+    ✓ 'rate<0.01' rate=0.00%
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 14395   39.984249/s
+    checks_succeeded...: 100.00% 14395 out of 14395
+    checks_failed......: 0.00%   0 out of 14395
+
+    ✓ заказ создан (201)
+
+    HTTP
+    http_req_duration..............: avg=30.13ms min=378.61µs med=24.37ms max=690.69ms p(90)=47.99ms p(95)=65.09ms
+      { expected_response:true }...: avg=30.13ms min=378.61µs med=24.37ms max=690.69ms p(90)=47.99ms p(95)=65.09ms
+      { path:order }...............: avg=32.97ms min=12.78ms  med=25.39ms max=690.69ms p(90)=50.65ms p(95)=67.69ms
+    http_req_failed................: 0.00%  0 out of 15843
+      { path:order }...............: 0.00%  0 out of 14395
+    http_reqs......................: 15843  44.006284/s
+
+    EXECUTION
+    dropped_iterations.............: 6      0.016666/s
+    iteration_duration.............: avg=33.33ms min=13.11ms  med=25.7ms  max=690.87ms p(90)=51.03ms p(95)=68.27ms
+    iterations.....................: 14395  39.984249/s
+    vus............................: 1      min=1          max=11
+    vus_max........................: 26     min=20         max=26
+
+    NETWORK
+    data_received..................: 12 MB  32 kB/s
+    data_sent......................: 2.5 MB 6.9 kB/s
+
+
+

@@ -79,4 +79,65 @@ spec:
             description: "Счётчик shop_worker_cycles_total не растёт пять минут, при этом поды worker отвечают на сбор метрик."
             impact: "Заказы не обрабатываются, хотя внешне всё исправно."
             action: "Посмотреть логи worker: вероятно, он завис на обращении к базе. Перезапуск пода вернёт обработку, но причину надо искать в логах."
+
+    # Группа лабы 4: отказы, связанные с ресурсами и планированием.
+    # Три разных механизма, каждый невидим для остальных двух.
+    - name: shop.resources
+      rules:
+        # 1. Критический путь не может разместиться.
+        # Планировщик считает по requests, а не по факту, поэтому Pending
+        # возникает и на простаивающем кластере. Для batch это штатное
+        # состояние и алертом не является: следим только за api и базой.
+        - alert: ShopCriticalPodPending
+          expr: sum(kube_pod_status_phase{namespace="shop",phase="Pending",pod=~"shop-api-.*|shop-db-.*"}) > 0
+          for: 3m
+          labels:
+            severity: critical
+            service: shop
+          annotations:
+            summary: "Под критического пути не может быть размещён"
+            description: "Под api или базы висит в Pending дольше трёх минут."
+            impact: "Ёмкость пути заказа ниже расчётной: оставшиеся реплики несут повышенную нагрузку."
+            action: "kubectl describe pod покажет причину в событии FailedScheduling. Чаще всего Insufficient cpu: сумма requests превысила allocatable, при том что реальная загрузка может быть низкой."
+
+        # 2. Критический путь режется троттлингом.
+        # Самый коварный отказ из трёх: поды Running и Ready, перезапусков нет,
+        # потребление в пределах лимита — и при этом сервис медленный. Процессор
+        # сжимаем, его нехватка не убивает под, а добавляет задержку. Именно
+        # этот алерт поймал бы аварию из Части 8, где лимит базы в 50m
+        # обрезал 99.7% периодов, а статус подов оставался безупречным.
+        - alert: ShopCriticalPathThrottled
+          expr: |
+            sum by (container) (rate(container_cpu_cfs_throttled_periods_total{namespace="shop",container=~"api|postgres"}[5m]))
+            /
+            sum by (container) (rate(container_cpu_cfs_periods_total{namespace="shop",container=~"api|postgres"}[5m]))
+            > 0.1
+          for: 5m
+          labels:
+            severity: critical
+            service: shop
+          annotations:
+            summary: "Контейнер {{ `{{ $labels.container }}` }} режется процессорным лимитом"
+            description: "Больше десятой части периодов CFS обрезается пять минут подряд."
+            impact: "Задержка пути заказа растёт, хотя поды выглядят здоровыми и ничего не падает."
+            action: "Поднять limits.cpu. Лимит надо задавать по пиковой потребности, а не по перцентилю: перцентиль годится для requests, которые влияют только на планирование."
+
+        # 3. Нарушен сам SLA.
+        # Два алерта выше ловят причины, этот — следствие. Нужен потому, что
+        # причин деградации больше, чем мы предусмотрели, и симптом надо
+        # сторожить независимо от известных механизмов.
+        - alert: ShopOrderLatencySLOBreach
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le) (rate(http_request_duration_seconds_bucket{namespace="shop",path="/order"}[5m]))
+            ) > 0.3
+          for: 5m
+          labels:
+            severity: critical
+            service: shop
+          annotations:
+            summary: "95-й перцентиль оформления заказа вышел за 300 мс"
+            description: "SLA критического пути нарушен пять минут подряд."
+            impact: "Клиенты ждут оформления заказа заметно дольше обещанного."
+            action: "Сверить с ShopCriticalPathThrottled и ShopCriticalPodPending. Если оба молчат, причина вне ресурсов: смотреть базу и внешние зависимости."
 {{- end }}

@@ -1,0 +1,24 @@
+### Кто вытеснил кого
+  жертва: shop-batch-5bf55fbc55-fm7cm
+  ради:   shop-api-6879b658f6-m2qjv
+  нода:   k3d-obs-agent-0
+  жертва: shop-batch-5bf55fbc55-fm7cm
+  ради:   shop-api-6879b658f6-b7hn2
+  нода:   k3d-obs-agent-0
+
+### api разнесён по нодам даже на девяти репликах
+      5 k3d-obs-agent-0
+      4 k3d-obs-server-0
+
+### Сводка
+      9 api Running
+      5 batch Pending
+     15 batch Running
+      1 db Running
+      2 worker Running
+
+### Ноды: зарезервировано против факта
+  k3d-obs-agent-0    факт CPU 205m   (5%)
+  k3d-obs-server-0   факт CPU 256m   (6%)
+  k3d-obs-server-0   запросы 3970m (99%)
+  k3d-obs-agent-0    запросы 3700m (92%)

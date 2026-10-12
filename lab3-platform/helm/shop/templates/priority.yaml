@@ -1,0 +1,33 @@
+{{- if .Values.priorityClasses.enabled }}
+# Классы приоритета — объекты кластерного уровня, поэтому имени релиза в них нет.
+# Приоритет решает две разные вещи: кого планировщик обслужит раньше в очереди
+# Pending и кого вытеснит, когда места не хватает.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ .Values.priorityClasses.critical.name }}
+  labels:
+    {{- include "shop.labels" (dict "name" "shop" "partOf" .Values.partOf "release" .Release.Name) | nindent 4 }}
+value: {{ .Values.priorityClasses.critical.value }}
+globalDefault: false
+# Значение намеренно заметно ниже системных классов Kubernetes
+# (system-cluster-critical = 2000000000): критический путь приложения не должен
+# конкурировать с компонентами control plane, иначе спасая заказы мы уроним кластер.
+preemptionPolicy: PreemptLowerPriority
+description: "Критический путь магазина: оформление заказа. Вытесняет фоновую нагрузку, когда не хватает места."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ .Values.priorityClasses.background.name }}
+  labels:
+    {{- include "shop.labels" (dict "name" "shop" "partOf" .Values.partOf "release" .Release.Name) | nindent 4 }}
+value: {{ .Values.priorityClasses.background.value }}
+globalDefault: false
+# Отрицательное значение ставит фоновую нагрузку ниже всего остального:
+# под без priorityClassName получает приоритет 0, то есть всё равно выше batch.
+# Never означает, что batch сам никого не вытесняет — он только ждёт места.
+# Фоновой работе уместно уступать, но не отнимать.
+preemptionPolicy: Never
+description: "Фоновая аналитика. Вытесняется первой и сама никого не вытесняет."
+{{- end }}

@@ -1,0 +1,24 @@
+### Шаг 1 Части 7: OOMKilled по собственному лимиту контейнера
+
+## Состояние подов по версии Kubernetes
+shop-batch-5bf55fbc55-7rqp2  restarts=0  reason=  exit=
+shop-batch-5bf55fbc55-7tz2c  restarts=0  reason=  exit=
+shop-batch-5bf55fbc55-m9xjv  restarts=0  reason=  exit=
+shop-batch-5d8b985695-p9bls  restarts=4  reason=Error  exit=137
+shop-batch-5d8b985695-wdp5p  restarts=4  reason=Error  exit=137
+
+## Счётчики cgroup (memory.events) пода e0bb4f38-bb58-472c-b0bb-ea4e60b4afce
+low 0
+high 0
+max 97
+oom 5
+oom_kill 10
+oom_group_kill 5
+
+## Лимит этой cgroup (memory.max, байт)
+134217728
+
+## Журнал ядра
+[Mon Oct 12 13:38:14 2026] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=32eeb8de748022deeacad7ad242407899daf90689ff168d88c547bb7d443957e,mems_allowed=0,oom_memcg=/system.slice/docker-85cf8d273e2322bdc98965f46928dd2b046c9b233815f1f4c5897697439a207e.scope/kubepods/burstable/pod386a4288-eea9-46bf-9f04-2d4f50dac2b6,task_memcg=/system.slice/docker-85cf8d273e2322bdc98965f46928dd2b046c9b233815f1f4c5897697439a207e.scope/kubepods/burstable/pod386a4288-eea9-46bf-9f04-2d4f50dac2b6/32eeb8de748022deeacad7ad242407899daf90689ff168d88c547bb7d443957e,task=app,pid=85912,uid=65534
+[Mon Oct 12 13:38:14 2026] Memory cgroup out of memory: Killed process 85912 (app) total-vm:1401252kB, anon-rss:129792kB, file-rss:8064kB, shmem-rss:0kB, UID:65534 pgtables:372kB oom_score_adj:995
+[Mon Oct 12 13:38:14 2026] Memory cgroup out of memory: Killed process 85944 (app) total-vm:1401252kB, anon-rss:129792kB, file-rss:8064kB, shmem-rss:0kB, UID:65534 pgtables:372kB oom_score_adj:995

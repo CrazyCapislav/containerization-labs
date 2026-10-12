@@ -1,0 +1,19 @@
+{{- if .Values.monitoring.dashboard.enabled }}
+# Дашборд едет в кластер ConfigMap-ом, а не импортируется руками через интерфейс.
+# Ручной импорт живёт во встроенной базе Grafana внутри пода и исчезает вместе
+# с ним при первом же пересоздании: так был потерян дашборд второй лабы.
+# Содержимое читается через .Files.Get, который ничего не шаблонизирует,
+# поэтому шаблонные подстановки Grafana в легендах панелей доезжают целыми.
+# Будь дашборд вставлен сюда текстом, Helm попытался бы раскрыть их сам.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-dashboard-resources
+  labels:
+    # Метка и значение, которые слушает sidecar Grafana из kube-prometheus-stack.
+    grafana_dashboard: "1"
+    {{- include "shop.labels" (dict "name" "shop" "partOf" .Values.partOf "release" .Release.Name) | nindent 4 }}
+data:
+  shop-resources.json: |
+{{ .Files.Get "files/dashboard-resources.json" | indent 4 }}
+{{- end }}

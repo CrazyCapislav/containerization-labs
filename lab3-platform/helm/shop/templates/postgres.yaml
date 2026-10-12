@@ -8,6 +8,10 @@ metadata:
 spec:
   instances: {{ .Values.postgres.instances }}
 
+  {{- if .Values.postgres.priorityClassName }}
+  priorityClassName: {{ .Values.postgres.priorityClassName }}
+  {{- end }}
+
   # Поды базы создаёт оператор, а не этот чарт, и своих меток
   # app.kubernetes.io/* он не проставляет. Без inheritedMetadata политика
   # require-labels отклонила бы их, и кластер не поднялся бы вовсе.
@@ -27,13 +31,10 @@ spec:
   storage:
     size: {{ .Values.postgres.storageSize }}
 
-  # Лимит только по памяти, как требует политика require-resources.
+  # Ресурсы задаются целиком из values: классу Guaranteed нужен и потолок
+  # по CPU, которого в лабе 3 сознательно не было.
   resources:
-    requests:
-      cpu: {{ .Values.postgres.resources.requests.cpu }}
-      memory: {{ .Values.postgres.resources.requests.memory }}
-    limits:
-      memory: {{ .Values.postgres.resources.limits.memory }}
+    {{- toYaml .Values.postgres.resources | nindent 4 }}
 
   postgresql:
     parameters:

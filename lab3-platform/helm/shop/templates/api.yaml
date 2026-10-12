@@ -22,8 +22,17 @@ spec:
         {{- include "shop.labels" (dict "name" "api" "partOf" .Values.partOf "release" .Release.Name) | nindent 8 }}
     spec:
       terminationGracePeriodSeconds: {{ .Values.api.terminationGracePeriodSeconds }}
+      {{- if .Values.api.priorityClassName }}
+      priorityClassName: {{ .Values.api.priorityClassName }}
+      {{- end }}
+      {{- $sel := ternary .Values.api.nodeSelector .Values.nodeSelector (hasKey .Values.api "nodeSelector") }}
+      {{- if $sel }}
       nodeSelector:
-        {{- toYaml .Values.nodeSelector | nindent 8 }}
+        {{- toYaml $sel | nindent 8 }}
+      {{- end }}
+      {{- with include "shop.spread" (dict "name" "api" "release" .Release.Name "spread" .Values.spread) }}
+      {{- . | nindent 6 }}
+      {{- end }}
       containers:
         - name: api
           image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"

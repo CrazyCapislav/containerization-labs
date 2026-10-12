@@ -1,0 +1,29 @@
+### Шаг 2 Части 7: выселение по давлению памяти на ноде
+
+## Порог kubelet (изменён осознанно, см. комментарий в config.yaml)
+   {'imagefs.available': '5%', 'memory.available': '7Gi', 'nodefs.available': '5%'}
+
+## Что видит kubelet против того, что видит free
+  k3d-obs-agent-0  available=7585MB  workingSet=4375MB
+  k3d-obs-server-0  available=7445MB  workingSet=4516MB
+  free на виртуалке        available=2801MB  total=11960MB
+
+## События выселения
+Evicted             shop-batch-6c767c47bb-82gm2    The node was low on resource: memory. Threshold quantity: 7Gi, available: 7062932Ki. Container batch was using 1587924Ki, request is 64Mi, has larger consumption of memory. 
+Evicted             shop-batch-6c767c47bb-khkkc    The node was low on resource: memory. Threshold quantity: 7Gi, available: 7104372Ki. Container batch was using 1586028Ki, request is 64Mi, has larger consumption of memory. 
+Evicted             shop-batch-6c767c47bb-xkkx6    The node was low on resource: memory. Threshold quantity: 7Gi, available: 7276320Ki. Container batch was using 1323364Ki, request is 64Mi, has larger consumption of memory. 
+
+## Кто выжил, кто нет
+shop-batch-6c767c47bb-7ccfk    Running     Burstable    -1000     k3d-obs-agent-0
+shop-batch-6c767c47bb-n4p2h    Running     Burstable    -1000     k3d-obs-agent-0
+shop-batch-6c767c47bb-htswz    Running     Burstable    -1000     k3d-obs-server-0
+shop-batch-6c767c47bb-sl578    Running     Burstable    -1000     k3d-obs-server-0
+shop-worker-649f7dc54f-8hqwz   Running     Burstable    0         k3d-obs-agent-0
+shop-worker-649f7dc54f-95jpp   Running     Burstable    0         k3d-obs-agent-0
+shop-db-1                      Running     Guaranteed   1000000   k3d-obs-agent-0
+shop-api-6879b658f6-cqbfb      Running     Guaranteed   1000000   k3d-obs-server-0
+shop-api-6879b658f6-mrjq5      Running     Guaranteed   1000000   k3d-obs-server-0
+shop-api-6879b658f6-rzmxb      Running     Guaranteed   1000000   k3d-obs-server-0
+shop-batch-6c767c47bb-xkkx6    Succeeded   Burstable    -1000     k3d-obs-agent-0
+shop-batch-6c767c47bb-82gm2    Succeeded   Burstable    -1000     k3d-obs-server-0
+shop-batch-6c767c47bb-khkkc    Succeeded   Burstable    -1000     k3d-obs-server-0

@@ -1,0 +1,17 @@
+{{- if .Values.api.pdb.enabled }}
+# PodDisruptionBudget ограничивает только ДОБРОВОЛЬНЫЕ выселения: drain ноды,
+# обновление кластера, работу автоскейлера. На вытеснение планировщиком по
+# приоритету и на eviction под давлением ресурсов он не влияет — это механизмы
+# разных уровней, и путать их опасно: PDB не спасёт от нехватки памяти.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-api
+  labels:
+    {{- include "shop.labels" (dict "name" "api" "partOf" .Values.partOf "release" .Release.Name) | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.api.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "shop.selectorLabels" (dict "name" "api" "release" .Release.Name) | nindent 6 }}
+{{- end }}
