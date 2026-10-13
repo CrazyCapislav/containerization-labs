@@ -1,0 +1,61 @@
+# Сбор метрик n8n, который живёт ВНЕ кластера, рядом с ним в Docker.
+#
+# Штатный приём Kubernetes для внешней цели: Service без селектора плюс
+# Endpoints, заполненный руками. Селектора нет, значит контроллер эндпоинтов
+# их не трогает, и адрес остаётся тем, что мы записали. Для ServiceMonitor
+# такой сервис неотличим от обычного.
+#
+# Адрес 172.18.0.1 это шлюз docker-сети кластера, то есть сама виртуалка,
+# где опубликован порт 5678. Из подов кластера он маршрутизируется.
+apiVersion: v1
+kind: Service
+metadata:
+  name: n8n-external
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: n8n
+    app.kubernetes.io/part-of: kvart-digest
+spec:
+  ports:
+    - name: http
+      port: 5678
+      targetPort: 5678
+      protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: n8n-external
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: n8n
+    app.kubernetes.io/part-of: kvart-digest
+subsets:
+  - addresses:
+      - ip: 172.18.0.1
+    ports:
+      - name: http
+        port: 5678
+        protocol: TCP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: n8n-external
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: n8n
+    app.kubernetes.io/part-of: kvart-digest
+    # Метка, по которой Prometheus из kube-prometheus-stack отбирает
+    # ServiceMonitor: без неё объект создастся, но сбор не начнётся.
+    release: kps
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: n8n
+  namespaceSelector:
+    matchNames: [monitoring]
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

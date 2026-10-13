@@ -1,0 +1,926 @@
+{
+  "id": "XndQZs1OqDv7U57S",
+  "name": "Кварт: сводка по релизу",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "567dac74-1ce4-4bc4-b747-cbc99cfc311b",
+      "name": "Запуск вручную",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        13648,
+        1744
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "p1",
+              "name": "owner",
+              "value": "CrazyCapislav",
+              "type": "string"
+            },
+            {
+              "id": "p2",
+              "name": "repo",
+              "value": "containerization-labs",
+              "type": "string"
+            },
+            {
+              "id": "p3",
+              "name": "tagFrom",
+              "value": "v2.7.0",
+              "type": "string"
+            },
+            {
+              "id": "p4",
+              "name": "tagTo",
+              "value": "v2.8.0",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "69d15b85-d3c6-4b3c-9b91-3416d57b69df",
+      "name": "Параметры релиза",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        13856,
+        1744
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Производные значения. Заголовок задачи собирается здесь по жёсткому\n// формату: по нему же ниже ищется дубликат, и формат должен совпадать.\nconst p = $input.first().json;\nreturn [{ json: { ...p,\n  issueTitle: `Релиз ${p.tagTo}: чек-лист выкатки`,\n  reportPath: `/workspace/reports/release-${p.tagTo}.md`,\n  templatePath: '/workspace/release/notes-template.md'\n}}];",
+        "options": {}
+      },
+      "id": "2c009659-1ac0-4280-b8e9-5c65d4cfe535",
+      "name": "Производные значения",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14048,
+        1744
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $json.owner }}/{{ $json.repo }}/compare/{{ $json.tagFrom }}...{{ $json.tagTo }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "04ad05a8-be00-4717-8755-640d7e103309",
+      "name": "Коммиты между тегами",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        14256,
+        1744
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "6hp211LB7804TxyB",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Один запрос compare отдаёт все коммиты диапазона. Разворачиваем по\n// одному: следующий узел сходит за файлами каждого, а пути к файлам\n// нужны, чтобы определять признаки риска.\nconst cmp = $input.first().json;\nconst ctx = $('Производные значения').first().json;\nconst commits = cmp.commits || [];\nif (!commits.length) throw new Error('между тегами нет коммитов');\nreturn commits.map(c => ({ json: { sha: c.sha, owner: ctx.owner, repo: ctx.repo } }));",
+        "options": {}
+      },
+      "id": "8a640b2c-162e-45d9-863e-6924c926b25c",
+      "name": "Развернуть коммиты",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14448,
+        1744
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $json.owner }}/{{ $json.repo }}/commits/{{ $json.sha }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 200
+            }
+          }
+        }
+      },
+      "id": "38e79a16-5119-4ed3-a2d7-c6e9ed0e1662",
+      "name": "Файлы каждого коммита",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        14656,
+        1744
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "6hp211LB7804TxyB",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Сжимаем коммит до минимума и СРАЗУ размечаем признаки риска по путям.\n// Проверка «лежит ли файл в db/migrations» детерминирована, и отдавать её\n// модели незачем: это стоило бы токенов и давало бы разброс. Модели\n// остаётся суждение: что из размеченного важно дежурному, как это\n// сформулировать и какие пять пунктов оставить.\n//\n// Пути файлов в payload НЕ попадают: после разметки они не нужны, а весят\n// примерно половину всего списка коммитов.\nconst ctx = $('Производные значения').first().json;\n\nfunction riskOf(message, files) {\n  const r = [];\n  const has = (frag) => files.some(f => f.indexOf(frag) === 0 || f.indexOf('/' + frag) >= 0);\n  if (has('db/migrations')) r.push('миграция');\n  if (has('services/payments') || has('services/orders')) r.push('оплата-заказы');\n  if (/откат|хотфикс/i.test(message)) r.push('откат-хотфикс');\n  if (has('.github/workflows') || has('deploy/')) r.push('конфигурация-выкатки');\n  return r;\n}\n\nconst commits = $input.all().map(i => {\n  const c = i.json;\n  const msg = ((c.commit && c.commit.message) || '').split(String.fromCharCode(10))[0];\n  const files = (c.files || []).map(f => f.filename);\n  const risk = riskOf(msg, files);\n  const out = { sha: (c.sha || '').slice(0, 7), msg };\n  if (risk.length) out.risk = risk;\n  return out;\n});\n\nconst risky = commits.filter(c => c.risk).length;\nreturn [{ json: { ...ctx, commitCount: commits.length, riskyCount: risky, commits } }];",
+        "options": {}
+      },
+      "id": "24b09f19-0a2b-438c-b8ec-660a6d58a45c",
+      "name": "Сжать коммиты",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14848,
+        1744
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $json.owner }}/{{ $json.repo }}/issues",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "state",
+              "value": "all"
+            },
+            {
+              "name": "per_page",
+              "value": "100"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ac3f643d-eb16-4e5c-bb15-e7b42d6320e1",
+      "name": "Задачи репозитория",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        15056,
+        1744
+      ],
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "6hp211LB7804TxyB",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Проверка дубликата кодом, а не моделью. Ищем точное совпадение\n// заголовка среди задач в ЛЮБОМ состоянии: тег не переиспользуется,\n// поэтому закрытая задача на тот же тег тоже значит «уже обработано».\n// Раньше это правило держалось на том, что модель не забудет вызвать\n// list_issues. Теперь обойти его она не может.\n//\n// Здесь же читаем чек-лист с диска: каталог /workspace примонтирован\n// и в n8n, и в MCP-сервер файлов. Так агент Б не тратит свою минуту\n// бюджета на чтение файла.\nconst fs = require('fs');\nconst ctx = $('Сжать коммиты').first().json;\nconst issues = $input.all().map(i => i.json).filter(x => x && x.title);\nconst matches = issues.filter(i => i.title === ctx.issueTitle)\n                      .sort((a, b) => a.number - b.number);\nconst found = matches[0];\nlet checklist = '';\ntry { checklist = fs.readFileSync('/workspace/release/checklist.md', 'utf8'); }\ncatch (e) { checklist = 'ЧЕК-ЛИСТ НЕДОСТУПЕН: ' + e.message; }\nreturn [{ json: { ...ctx,\n  duplicate: Boolean(found),\n  duplicateUrl: found ? found.html_url : null,\n  duplicateNumber: found ? found.number : null,\n  checklistRepoPath: 'lab8-morning-digest/stand/workspace/release/checklist.md',\n  checklist\n}}];",
+        "options": {}
+      },
+      "id": "f15e74e3-55da-4ebc-a2f6-e4b3172bfacf",
+      "name": "Проверить дубль и прочитать чек-лист",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        15248,
+        1744
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Собери release notes по релизу {{ $json.tagTo }}.\n\nowner: {{ $json.owner }}\nrepo: {{ $json.repo }}\nдиапазон: {{ $json.tagFrom }} .. {{ $json.tagTo }}\nкоммитов: {{ $json.commitCount }}\ntemplatePath: {{ $json.templatePath }}\nreportPath: {{ $json.reportPath }}\n\nКоммиты:\n{{ JSON.stringify($json.commits) }}",
+        "options": {
+          "systemMessage": "Ты готовишь release notes для дежурного по релизу компании «Кварт» (доставка продуктов).\n\nПОРЯДОК:\n1. read_text_file с путём templatePath — структура разделов.\n2. Разложи коммиты по разделам.\n3. Ответь ПОЛНЫМ ТЕКСТОМ сводки и ничем больше: без предисловий и пояснений.\n   Твой ответ целиком попадает в файл, который читает дежурный.\n\nУ части коммитов есть поле risk с метками. Размечать заново не надо: реши, что из этого важно дежурному.\n\nПРАВИЛА:\n- Разделы ровно как в шаблоне: все четыре, в том же порядке, с теми же заголовками.\n- «Требует внимания»: максимум 5 пунктов, каждый одной строкой; при избытке оставляй миграции, оплату и заказы.\n- В пункте: что меняется и почему риск.\n- Ссылка https://github.com/OWNER/REPO/commit/SHA, где SHA это поле sha ТОГО ЖЕ коммита.\n- Пустой раздел не выбрасывай, пиши «изменений нет».\n- «Что увидят клиенты и курьеры» — без имён файлов.\n- Объём сводки от 700 до 1100 символов.",
+          "maxIterations": 3,
+          "forceToolCallOnFirstIteration": true
+        }
+      },
+      "id": "c9d8e330-1956-4aa2-9f5f-abb9a69fae30",
+      "name": "Агент А: release notes",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        15472,
+        1744
+      ]
+    },
+    {
+      "parameters": {
+        "model": "qwen/qwen3.8-27b",
+        "options": {
+          "temperature": 0.2,
+          "maxTokensToSample": 650
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        15408,
+        1968
+      ],
+      "id": "mdl-a-0001",
+      "name": "Groq для агента А",
+      "credentials": {
+        "groqApi": {
+          "id": "w9nEAU3dqjiKJGDw",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "http://mcp-filesystem:8001/mcp",
+        "serverTransport": "httpStreamable",
+        "authentication": "none",
+        "include": "selected",
+        "includeTools": [
+          "read_text_file"
+        ],
+        "options": {}
+      },
+      "id": "491ca361-094d-4ffd-9c24-d74e22338481",
+      "name": "MCP: файлы",
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [
+        15600,
+        1968
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 90,
+        "unit": "seconds",
+        "options": {}
+      },
+      "id": "f2728902-9f12-4e2d-992c-489081b5804b",
+      "name": "Пауза: новая минута бюджета",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        15792,
+        1744
+      ],
+      "webhookId": "a1000000-0000-4000-8000-0000000000ff"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Поставь задачу по релизу {{ $('Проверить дубль и прочитать чек-лист').first().json.tagTo }}.\n\nowner: {{ $('Проверить дубль и прочитать чек-лист').first().json.owner }}\nrepo: {{ $('Проверить дубль и прочитать чек-лист').first().json.repo }}\ntitle: {{ $('Проверить дубль и прочитать чек-лист').first().json.issueTitle }}\nchecklistPath: {{ $('Проверить дубль и прочитать чек-лист').first().json.checklistRepoPath }}\n\nРискованные изменения релиза:\n{{ $('Сжать коммиты').first().json.commits.filter(c => c.risk).map(c => '- ' + c.msg + ' [' + c.risk.join(', ') + ']').join(String.fromCharCode(10)) }}",
+        "options": {
+          "systemMessage": "Ты готовишь тело задачи для дежурного по релизу компании «Кварт».\n\nПОРЯДОК:\n1. get_file_contents с owner, repo и path из задания: это чек-лист\n   выкатки. Он живёт в репозитории и правится командой через\n   пул-реквесты, поэтому берётся оттуда, а не из твоей памяти.\n2. Выдай готовое тело задачи и ничего больше: ни предисловий, ни\n   пояснений, ни упоминания того, что ты его собрал. Твой ответ целиком\n   станет телом задачи, которую откроет дежурный.\n\nПРАВИЛА:\n- Чек-лист воспроизводится ЦЕЛИКОМ, со всеми пунктами и их нумерацией.\n  Это обязательства команды, сокращать их нельзя.\n- Вводную часть чек-листа (абзац до первого заголовка) не переписывай,\n  начинай сразу с раздела «До выкатки».\n- Под пунктами, которые стали критичны из-за рискованных изменений этого\n  релиза, добавляй строку «важно в этом релизе: ...» с объяснением, что\n  именно изменилось и чем это грозит.\n- Пункты, которых релиз не касается, оставляй как есть, без приписок.\n- На русском, объём от 900 до 1200 символов.\n- Пиши сразу набело.",
+          "maxIterations": 3
+        }
+      },
+      "id": "cf1de33a-ce56-400c-823f-11ad4d64c584",
+      "name": "Агент Б: тело задачи",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        16300,
+        1744
+      ]
+    },
+    {
+      "parameters": {
+        "model": "qwen/qwen3.8-27b",
+        "options": {
+          "temperature": 0.2,
+          "maxTokensToSample": 750
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        16236,
+        1968
+      ],
+      "id": "mdl-b-0001",
+      "name": "Groq для агента Б",
+      "credentials": {
+        "groqApi": {
+          "id": "w9nEAU3dqjiKJGDw",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kvart-release",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "c2131c79-7179-424d-b229-149d6b01629e",
+      "name": "Вебхук: пуш тега",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        13648,
+        1952
+      ],
+      "webhookId": "a1000000-0000-4000-8000-00000000aaaa"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Документ больше не едет внутри JSON-аргумента вызова инструмента.\n// Причина измерена: qwen обрывал длинную строку в аргументах write_file\n// на 224 токенах вывода и обрыва не замечал, а gpt-oss писал целиком,\n// но тратил на размышление столько, что не влезал в лимит Groq\n// OTPM 1000 токенов вывода в минуту. Модель отдаёт текст, файл кладёт\n// этот узел, и запись перестаёт зависеть от умения модели собирать JSON.\nconst fs = require('fs');\nconst ctx = $('Проверить дубль и прочитать чек-лист').first().json;\nconst text = ($('Агент А: release notes').first().json.output || '').trim();\nconst NL = String.fromCharCode(10);\n\nconst required = ['## Требует внимания', '## Что увидят',\n                  '## Внутренние изменения', '## Миграции'];\nconst missing = required.filter(h => text.indexOf(h) < 0);\nif (text.length < 400) {\n  throw new Error('сводка слишком короткая: ' + text.length + ' символов');\n}\nif (missing.length) {\n  throw new Error('в сводке нет разделов: ' + missing.join('; '));\n}\n\nfs.writeFileSync(ctx.reportPath, text + NL, 'utf8');\n\n// Проверяем не свою же переменную, а файл на диске: каталог смонтирован\n// и в n8n, и в MCP-сервер файлов, и ошибка монтирования видна только так.\nconst st = fs.statSync(ctx.reportPath);\nconst age = (Date.now() - st.mtimeMs) / 1000;\nif (st.size < 400 || age > 60) {\n  throw new Error('файл записан неверно: ' + st.size + ' байт, возраст ' + age + ' с');\n}\n\nreturn [{ json: Object.assign({}, ctx, { reportBytes: st.size, reportChars: text.length }) }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        15648,
+        1744
+      ],
+      "id": "write-report-01",
+      "name": "Записать и проверить отчёт"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "dup1",
+              "leftValue": "={{ $('Проверить дубль и прочитать чек-лист').first().json.duplicate }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        15904,
+        1744
+      ],
+      "id": "gate-dup-0001",
+      "name": "Дубль задачи?"
+    },
+    {
+      "parameters": {
+        "model": "qwen/qwen3.8-27b",
+        "options": {
+          "temperature": 0.2,
+          "maxTokensToSample": 300
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        16236,
+        1360
+      ],
+      "id": "mdl-v-0001",
+      "name": "Groq для агента В",
+      "credentials": {
+        "groqApi": {
+          "id": "w9nEAU3dqjiKJGDw",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "http://mcp-github:8082/mcp",
+        "serverTransport": "httpStreamable",
+        "authentication": "headerAuth",
+        "include": "selected",
+        "includeTools": [
+          "add_issue_comment"
+        ],
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [
+        16412,
+        1360
+      ],
+      "id": "mcp-v-0001",
+      "name": "MCP: комментарий",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "6hp211LB7804TxyB",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Отметь повторную сборку релиза {{ $('Проверить дубль и прочитать чек-лист').first().json.tagTo }}.\n\nowner: {{ $('Проверить дубль и прочитать чек-лист').first().json.owner }}\nrepo: {{ $('Проверить дубль и прочитать чек-лист').first().json.repo }}\nissue_number: {{ $('Проверить дубль и прочитать чек-лист').first().json.duplicateNumber }}\n\nРискованные изменения релиза:\n{{ $('Сжать коммиты').first().json.commits.filter(c => c.risk).map(c => '- ' + c.msg + ' [' + c.risk.join(', ') + ']').join(String.fromCharCode(10)) }}",
+        "options": {
+          "maxIterations": 3,
+          "systemMessage": "Ты отмечаешь в уже существующей задаче, что релиз собран повторно.\n\nПОРЯДОК:\n1. add_issue_comment РОВНО с четырьмя полями: owner, repo, issue_number\n   из задания и body с текстом комментария. Больше ничего не передавай.\n2. Ответь одной строкой: номер задачи.\n\nПРАВИЛА:\n- Не пиши пояснений и не пересказывай задание в ответе. Весь твой вывод\n  это вызов инструмента.\n- Комментарий на русском, не длиннее 300 символов.\n- По существу: релиз пересобран, не больше трёх самых важных рисков,\n  что проверить дежурному. Перечислять всё не надо.\n- Новую задачу не создавай и существующую не закрывай."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        16300,
+        1520
+      ],
+      "id": "agent-v-0001",
+      "name": "Агент В: отметка в задаче",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Тело задачи приходит текстом от агента, а не аргументом вызова\n// инструмента: длинную строку в аргументе модель не дотягивает.\n// Проверяем здесь, до записи, потому что созданную задачу уже не отозвать.\nconst ctx = $('Проверить дубль и прочитать чек-лист').first().json;\nconst body = ($('Агент Б: тело задачи').first().json.output || '').trim();\n\nif (body.length < 800) {\n  throw new Error('тело задачи слишком короткое: ' + body.length +\n                  ' символов, ожидался чек-лист целиком');\n}\nconst tail = body.slice(-1);\nif (tail !== '.' && tail !== ')' && tail !== '!' && tail !== ':') {\n  throw new Error('тело задачи оборвано на полуслове, последние символы: ' +\n                  JSON.stringify(body.slice(-40)));\n}\n\n// Эталон: тот же чек-лист, прочитанный с диска узлом дедупликации.\n// Агент читает его из репозитория через get_file_contents, и сверка\n// с эталоном ловит случай, когда он потерял или выдумал пункты.\nconst expected = (ctx.checklist.match(/^\\s*\\d+\\./gm) || []).length;\nconst got = (body.match(/^\\s*\\d+\\./gm) || []).length;\nif (got < expected) {\n  throw new Error('в теле задачи ' + got + ' пунктов чек-листа из ' + expected);\n}\n\nreturn [{ json: { title: ctx.issueTitle, body, bodyChars: body.length,\n                  checklistPoints: got, expectedPoints: expected } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16556,
+        1744
+      ],
+      "id": "build-body-01",
+      "name": "Собрать тело задачи"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ответ GitHub на создание это и есть сохранённое состояние задачи.\n// Сверяем с тем, что отправляли: так видно и усечение на стороне API,\n// и случай, когда запись не дошла вовсе.\nconst sent = $('Собрать тело задачи').first().json;\nconst issue = $input.first().json;\n\nif (!issue || !issue.number) {\n  throw new Error('GitHub не вернул номер созданной задачи');\n}\nconst stored = (issue.body || '').trim();\nif (stored.length < sent.bodyChars) {\n  throw new Error('тело задачи #' + issue.number + ' сохранено не полностью: ' +\n                  'отправляли ' + sent.bodyChars + ', записано ' + stored.length);\n}\nreturn [{ json: { action: 'создана задача', issueNumber: issue.number,\n                  issueUrl: issue.html_url, bodyChars: stored.length,\n                  checklistPoints: sent.checklistPoints } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16940,
+        1744
+      ],
+      "id": "check-issue-01",
+      "name": "Проверить созданную задачу"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $('Проверить дубль и прочитать чек-лист').first().json.owner }}/{{ $('Проверить дубль и прочитать чек-лист').first().json.repo }}/issues/{{ $('Проверить дубль и прочитать чек-лист').first().json.duplicateNumber }}/comments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "per_page",
+              "value": "100"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        16556,
+        1520
+      ],
+      "id": "vfetch-0001",
+      "name": "Комментарии задачи",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "6hp211LB7804TxyB",
+          "name": "Header Auth account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Узел выше отдаёт полный ответ, поэтому элемент здесь есть всегда,\n// даже когда комментариев ноль. Это и есть страховка: без неё n8n\n// обрывал ветку молча и прогон отчитывался успехом без комментария.\nconst ctx = $('Проверить дубль и прочитать чек-лист').first().json;\nconst resp = $input.first().json;\nconst list = Array.isArray(resp.body) ? resp.body : [];\n\nif (!list.length) {\n  throw new Error('агент не оставил комментарий в задаче #' + ctx.duplicateNumber);\n}\nconst last = list[list.length - 1];\nconst body = (last.body || '').trim();\nif (body.length < 100) {\n  throw new Error('комментарий слишком короткий: ' + body.length + ' символов');\n}\n// Обрыв аргумента выглядит как текст, оборванный на полуслове, при\n// успешном статусе вызова. Отличить его можно только по виду хвоста.\nconst tail = body.slice(-1);\nif (tail !== '.' && tail !== ')' && tail !== '!' && tail !== ':') {\n  throw new Error('комментарий оборван на полуслове, последние символы: ' +\n                  JSON.stringify(body.slice(-40)));\n}\nreturn [{ json: { action: 'комментарий к существующей задаче',\n                  issueNumber: ctx.duplicateNumber, commentUrl: last.html_url,\n                  commentChars: body.length, commentsTotal: list.length } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16748,
+        1520
+      ],
+      "id": "vcheck-0001",
+      "name": "Проверить комментарий"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/{{ $('Проверить дубль и прочитать чек-лист').first().json.owner }}/{{ $('Проверить дубль и прочитать чек-лист').first().json.repo }}/issues",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ title: $json.title, body: $json.body }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        16748,
+        1744
+      ],
+      "id": "create-issue-01",
+      "name": "Создать задачу",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "6hp211LB7804TxyB",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "http://mcp-github:8082/mcp",
+        "serverTransport": "httpStreamable",
+        "authentication": "headerAuth",
+        "include": "selected",
+        "includeTools": [
+          "get_file_contents"
+        ],
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [
+        16412,
+        1968
+      ],
+      "id": "mcp-checklist-01",
+      "name": "MCP: чек-лист",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "6hp211LB7804TxyB",
+          "name": "Header Auth account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Запуск вручную": {
+      "main": [
+        [
+          {
+            "node": "Параметры релиза",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Параметры релиза": {
+      "main": [
+        [
+          {
+            "node": "Производные значения",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Производные значения": {
+      "main": [
+        [
+          {
+            "node": "Коммиты между тегами",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Коммиты между тегами": {
+      "main": [
+        [
+          {
+            "node": "Развернуть коммиты",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Развернуть коммиты": {
+      "main": [
+        [
+          {
+            "node": "Файлы каждого коммита",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Файлы каждого коммита": {
+      "main": [
+        [
+          {
+            "node": "Сжать коммиты",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сжать коммиты": {
+      "main": [
+        [
+          {
+            "node": "Задачи репозитория",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Задачи репозитория": {
+      "main": [
+        [
+          {
+            "node": "Проверить дубль и прочитать чек-лист",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Проверить дубль и прочитать чек-лист": {
+      "main": [
+        [
+          {
+            "node": "Агент А: release notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Агент А: release notes": {
+      "main": [
+        [
+          {
+            "node": "Записать и проверить отчёт",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Пауза: новая минута бюджета": {
+      "main": [
+        [
+          {
+            "node": "Дубль задачи?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq для агента А": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Агент А: release notes",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP: файлы": {
+      "ai_tool": [
+        [
+          {
+            "node": "Агент А: release notes",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq для агента Б": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Агент Б: тело задачи",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Вебхук: пуш тега": {
+      "main": [
+        [
+          {
+            "node": "Параметры релиза",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Дубль задачи?": {
+      "main": [
+        [
+          {
+            "node": "Агент В: отметка в задаче",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Агент Б: тело задачи",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Записать и проверить отчёт": {
+      "main": [
+        [
+          {
+            "node": "Пауза: новая минута бюджета",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq для агента В": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Агент В: отметка в задаче",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP: комментарий": {
+      "ai_tool": [
+        [
+          {
+            "node": "Агент В: отметка в задаче",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Агент Б: тело задачи": {
+      "main": [
+        [
+          {
+            "node": "Собрать тело задачи",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Агент В: отметка в задаче": {
+      "main": [
+        [
+          {
+            "node": "Комментарии задачи",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Комментарии задачи": {
+      "main": [
+        [
+          {
+            "node": "Проверить комментарий",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Собрать тело задачи": {
+      "main": [
+        [
+          {
+            "node": "Создать задачу",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Создать задачу": {
+      "main": [
+        [
+          {
+            "node": "Проверить созданную задачу",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP: чек-лист": {
+      "ai_tool": [
+        [
+          {
+            "node": "Агент Б: тело задачи",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  }
+}

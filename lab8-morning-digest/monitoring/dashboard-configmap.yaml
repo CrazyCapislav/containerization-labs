@@ -1,0 +1,200 @@
+apiVersion: v1
+data:
+  kvart-n8n.json: "{\r\n  \"uid\": \"kvart-n8n\",\r\n  \"title\": \"Кварт: сводка\
+    \ по релизу, здоровье процесса\",\r\n  \"description\": \"Лаба 8. Метрики n8n:\
+    \ сверху результат процесса, снизу здоровье самой платформы.\",\r\n  \"tags\"\
+    : [\r\n    \"kvart\",\r\n    \"lab8\",\r\n    \"n8n\"\r\n  ],\r\n  \"timezone\"\
+    : \"browser\",\r\n  \"editable\": true,\r\n  \"graphTooltip\": 1,\r\n  \"refresh\"\
+    : \"30s\",\r\n  \"schemaVersion\": 39,\r\n  \"version\": 1,\r\n  \"time\": {\r\
+    \n    \"from\": \"now-6h\",\r\n    \"to\": \"now\"\r\n  },\r\n  \"timepicker\"\
+    : {},\r\n  \"annotations\": {\r\n    \"list\": []\r\n  },\r\n  \"panels\": [\r\
+    \n    {\r\n      \"id\": 1,\r\n      \"type\": \"timeseries\",\r\n      \"title\"\
+    : \"Выполнения по статусам\",\r\n      \"description\": \"Сколько раз процесс\
+    \ отработал и сколько раз упал. Главная панель: всё остальное объясняет, почему\
+    \ эти столбцы выглядят так.\",\r\n      \"datasource\": {\r\n        \"type\"\
+    : \"prometheus\",\r\n        \"uid\": \"prometheus\"\r\n      },\r\n      \"gridPos\"\
+    : {\r\n        \"x\": 0,\r\n        \"y\": 0,\r\n        \"w\": 12,\r\n      \
+    \  \"h\": 8\r\n      },\r\n      \"fieldConfig\": {\r\n        \"defaults\": {\r\
+    \n          \"unit\": \"short\",\r\n          \"color\": {\r\n            \"mode\"\
+    : \"palette-classic\"\r\n          },\r\n          \"custom\": {\r\n         \
+    \   \"drawStyle\": \"line\",\r\n            \"lineWidth\": 2,\r\n            \"\
+    fillOpacity\": 10,\r\n            \"showPoints\": \"never\",\r\n            \"\
+    spanNulls\": true,\r\n            \"stacking\": {\r\n              \"mode\": \"\
+    normal\"\r\n            }\r\n          },\r\n          \"thresholds\": {\r\n \
+    \           \"mode\": \"absolute\",\r\n            \"steps\": [\r\n          \
+    \    {\r\n                \"color\": \"green\",\r\n                \"value\":\
+    \ null\r\n              }\r\n            ]\r\n          }\r\n        },\r\n  \
+    \      \"overrides\": []\r\n      },\r\n      \"targets\": [\r\n        {\r\n\
+    \          \"datasource\": {\r\n            \"type\": \"prometheus\",\r\n    \
+    \        \"uid\": \"prometheus\"\r\n          },\r\n          \"expr\": \"sum\
+    \ by (status) (increase(n8n_workflow_execution_duration_seconds_count[10m]))\"\
+    ,\r\n          \"legendFormat\": \"{{status}}\",\r\n          \"refId\": \"A\"\
+    ,\r\n          \"range\": true,\r\n          \"instant\": false,\r\n         \
+    \ \"editorMode\": \"code\"\r\n        }\r\n      ],\r\n      \"options\": {\r\n\
+    \        \"legend\": {\r\n          \"displayMode\": \"list\",\r\n          \"\
+    placement\": \"bottom\",\r\n          \"showLegend\": true,\r\n          \"calcs\"\
+    : []\r\n        },\r\n        \"tooltip\": {\r\n          \"mode\": \"multi\"\
+    ,\r\n          \"sort\": \"desc\"\r\n        }\r\n      }\r\n    },\r\n    {\r\
+    \n      \"id\": 2,\r\n      \"type\": \"timeseries\",\r\n      \"title\": \"Доля\
+    \ неудачных выполнений\",\r\n      \"description\": \"Отношение, а не абсолютное\
+    \ число: три отказа из трёх запусков и три из трёхсот это разные ситуации. Красная\
+    \ линия на 20% это порог алерта.\",\r\n      \"datasource\": {\r\n        \"type\"\
+    : \"prometheus\",\r\n        \"uid\": \"prometheus\"\r\n      },\r\n      \"gridPos\"\
+    : {\r\n        \"x\": 12,\r\n        \"y\": 0,\r\n        \"w\": 12,\r\n     \
+    \   \"h\": 8\r\n      },\r\n      \"fieldConfig\": {\r\n        \"defaults\":\
+    \ {\r\n          \"unit\": \"percentunit\",\r\n          \"color\": {\r\n    \
+    \        \"mode\": \"palette-classic\"\r\n          },\r\n          \"custom\"\
+    : {\r\n            \"drawStyle\": \"line\",\r\n            \"lineWidth\": 2,\r\
+    \n            \"fillOpacity\": 10,\r\n            \"showPoints\": \"never\",\r\
+    \n            \"spanNulls\": true,\r\n            \"stacking\": {\r\n        \
+    \      \"mode\": \"none\"\r\n            },\r\n            \"thresholdsStyle\"\
+    : {\r\n              \"mode\": \"line\"\r\n            }\r\n          },\r\n \
+    \         \"thresholds\": {\r\n            \"mode\": \"absolute\",\r\n       \
+    \     \"steps\": [\r\n              {\r\n                \"color\": \"green\"\
+    ,\r\n                \"value\": null\r\n              },\r\n              {\r\n\
+    \                \"color\": \"red\",\r\n                \"value\": 0.2\r\n   \
+    \           }\r\n            ]\r\n          },\r\n          \"max\": 1,\r\n  \
+    \        \"decimals\": 3\r\n        },\r\n        \"overrides\": []\r\n      },\r\
+    \n      \"targets\": [\r\n        {\r\n          \"datasource\": {\r\n       \
+    \     \"type\": \"prometheus\",\r\n            \"uid\": \"prometheus\"\r\n   \
+    \       },\r\n          \"expr\": \"sum(increase(n8n_workflow_execution_duration_seconds_count{status=\\\
+    \"failed\\\"}[1h])) / clamp_min(sum(increase(n8n_workflow_execution_duration_seconds_count[1h])),\
+    \ 1)\",\r\n          \"legendFormat\": \"доля отказов за час\",\r\n          \"\
+    refId\": \"A\",\r\n          \"range\": true,\r\n          \"instant\": false,\r\
+    \n          \"editorMode\": \"code\"\r\n        }\r\n      ],\r\n      \"options\"\
+    : {\r\n        \"legend\": {\r\n          \"displayMode\": \"list\",\r\n     \
+    \     \"placement\": \"bottom\",\r\n          \"showLegend\": true,\r\n      \
+    \    \"calcs\": []\r\n        },\r\n        \"tooltip\": {\r\n          \"mode\"\
+    : \"multi\",\r\n          \"sort\": \"desc\"\r\n        }\r\n      }\r\n    },\r\
+    \n    {\r\n      \"id\": 3,\r\n      \"type\": \"timeseries\",\r\n      \"title\"\
+    : \"Длительность выполнения, p95\",\r\n      \"description\": \"Процесс рассчитан\
+    \ примерно на две с половиной минуты: сбор, агент А, пауза 75 секунд, агент Б.\
+    \ Рост выше четырёх минут означает, что кто-то ждёт ответа дольше обычного, чаще\
+    \ всего модель.\",\r\n      \"datasource\": {\r\n        \"type\": \"prometheus\"\
+    ,\r\n        \"uid\": \"prometheus\"\r\n      },\r\n      \"gridPos\": {\r\n \
+    \       \"x\": 0,\r\n        \"y\": 8,\r\n        \"w\": 12,\r\n        \"h\"\
+    : 8\r\n      },\r\n      \"fieldConfig\": {\r\n        \"defaults\": {\r\n   \
+    \       \"unit\": \"s\",\r\n          \"color\": {\r\n            \"mode\": \"\
+    palette-classic\"\r\n          },\r\n          \"custom\": {\r\n            \"\
+    drawStyle\": \"line\",\r\n            \"lineWidth\": 2,\r\n            \"fillOpacity\"\
+    : 10,\r\n            \"showPoints\": \"never\",\r\n            \"spanNulls\":\
+    \ true,\r\n            \"stacking\": {\r\n              \"mode\": \"none\"\r\n\
+    \            }\r\n          },\r\n          \"thresholds\": {\r\n            \"\
+    mode\": \"absolute\",\r\n            \"steps\": [\r\n              {\r\n     \
+    \           \"color\": \"green\",\r\n                \"value\": null\r\n     \
+    \         }\r\n            ]\r\n          },\r\n          \"decimals\": 1\r\n\
+    \        },\r\n        \"overrides\": []\r\n      },\r\n      \"targets\": [\r\
+    \n        {\r\n          \"datasource\": {\r\n            \"type\": \"prometheus\"\
+    ,\r\n            \"uid\": \"prometheus\"\r\n          },\r\n          \"expr\"\
+    : \"histogram_quantile(0.95, sum by (le) (rate(n8n_workflow_execution_duration_seconds_bucket[30m])))\"\
+    ,\r\n          \"legendFormat\": \"p95\",\r\n          \"refId\": \"A\",\r\n \
+    \         \"range\": true,\r\n          \"instant\": false,\r\n          \"editorMode\"\
+    : \"code\"\r\n        }\r\n      ],\r\n      \"options\": {\r\n        \"legend\"\
+    : {\r\n          \"displayMode\": \"list\",\r\n          \"placement\": \"bottom\"\
+    ,\r\n          \"showLegend\": true,\r\n          \"calcs\": []\r\n        },\r\
+    \n        \"tooltip\": {\r\n          \"mode\": \"multi\",\r\n          \"sort\"\
+    : \"desc\"\r\n        }\r\n      }\r\n    },\r\n    {\r\n      \"id\": 4,\r\n\
+    \      \"type\": \"timeseries\",\r\n      \"title\": \"Время с последней активности\"\
+    ,\r\n      \"description\": \"Сторожит тишину. Процесс по кейсу запускается на\
+    \ пуш тега, то есть нерегулярно, но полное молчание сутками значит, что триггер\
+    \ отвалился. Отказ, который не виден ни по одной метрике ошибок.\",\r\n      \"\
+    datasource\": {\r\n        \"type\": \"prometheus\",\r\n        \"uid\": \"prometheus\"\
+    \r\n      },\r\n      \"gridPos\": {\r\n        \"x\": 12,\r\n        \"y\": 8,\r\
+    \n        \"w\": 12,\r\n        \"h\": 8\r\n      },\r\n      \"fieldConfig\"\
+    : {\r\n        \"defaults\": {\r\n          \"unit\": \"s\",\r\n          \"color\"\
+    : {\r\n            \"mode\": \"palette-classic\"\r\n          },\r\n         \
+    \ \"custom\": {\r\n            \"drawStyle\": \"line\",\r\n            \"lineWidth\"\
+    : 2,\r\n            \"fillOpacity\": 10,\r\n            \"showPoints\": \"never\"\
+    ,\r\n            \"spanNulls\": true,\r\n            \"stacking\": {\r\n     \
+    \         \"mode\": \"none\"\r\n            }\r\n          },\r\n          \"\
+    thresholds\": {\r\n            \"mode\": \"absolute\",\r\n            \"steps\"\
+    : [\r\n              {\r\n                \"color\": \"green\",\r\n          \
+    \      \"value\": null\r\n              }\r\n            ]\r\n          }\r\n\
+    \        },\r\n        \"overrides\": []\r\n      },\r\n      \"targets\": [\r\
+    \n        {\r\n          \"datasource\": {\r\n            \"type\": \"prometheus\"\
+    ,\r\n            \"uid\": \"prometheus\"\r\n          },\r\n          \"expr\"\
+    : \"time() - n8n_last_activity\",\r\n          \"legendFormat\": \"секунд назад\"\
+    ,\r\n          \"refId\": \"A\",\r\n          \"range\": true,\r\n          \"\
+    instant\": false,\r\n          \"editorMode\": \"code\"\r\n        }\r\n     \
+    \ ],\r\n      \"options\": {\r\n        \"legend\": {\r\n          \"displayMode\"\
+    : \"list\",\r\n          \"placement\": \"bottom\",\r\n          \"showLegend\"\
+    : true,\r\n          \"calcs\": []\r\n        },\r\n        \"tooltip\": {\r\n\
+    \          \"mode\": \"multi\",\r\n          \"sort\": \"desc\"\r\n        }\r\
+    \n      }\r\n    },\r\n    {\r\n      \"id\": 5,\r\n      \"type\": \"timeseries\"\
+    ,\r\n      \"title\": \"Задержка цикла событий Node.js\",\r\n      \"description\"\
+    : \"n8n однопоточный. Если цикл событий встал, процесс не падает, но перестаёт\
+    \ успевать: выполнения тянутся, вебхуки отвечают с задержкой. Отказ без единой\
+    \ ошибки в логе.\",\r\n      \"datasource\": {\r\n        \"type\": \"prometheus\"\
+    ,\r\n        \"uid\": \"prometheus\"\r\n      },\r\n      \"gridPos\": {\r\n \
+    \       \"x\": 0,\r\n        \"y\": 16,\r\n        \"w\": 12,\r\n        \"h\"\
+    : 8\r\n      },\r\n      \"fieldConfig\": {\r\n        \"defaults\": {\r\n   \
+    \       \"unit\": \"s\",\r\n          \"color\": {\r\n            \"mode\": \"\
+    palette-classic\"\r\n          },\r\n          \"custom\": {\r\n            \"\
+    drawStyle\": \"line\",\r\n            \"lineWidth\": 2,\r\n            \"fillOpacity\"\
+    : 10,\r\n            \"showPoints\": \"never\",\r\n            \"spanNulls\":\
+    \ true,\r\n            \"stacking\": {\r\n              \"mode\": \"none\"\r\n\
+    \            }\r\n          },\r\n          \"thresholds\": {\r\n            \"\
+    mode\": \"absolute\",\r\n            \"steps\": [\r\n              {\r\n     \
+    \           \"color\": \"green\",\r\n                \"value\": null\r\n     \
+    \         }\r\n            ]\r\n          },\r\n          \"decimals\": 3\r\n\
+    \        },\r\n        \"overrides\": []\r\n      },\r\n      \"targets\": [\r\
+    \n        {\r\n          \"datasource\": {\r\n            \"type\": \"prometheus\"\
+    ,\r\n            \"uid\": \"prometheus\"\r\n          },\r\n          \"expr\"\
+    : \"n8n_nodejs_eventloop_lag_p50_seconds\",\r\n          \"legendFormat\": \"\
+    p50\",\r\n          \"refId\": \"A\",\r\n          \"range\": true,\r\n      \
+    \    \"instant\": false,\r\n          \"editorMode\": \"code\"\r\n        },\r\
+    \n        {\r\n          \"datasource\": {\r\n            \"type\": \"prometheus\"\
+    ,\r\n            \"uid\": \"prometheus\"\r\n          },\r\n          \"expr\"\
+    : \"n8n_nodejs_eventloop_lag_p90_seconds\",\r\n          \"legendFormat\": \"\
+    p90\",\r\n          \"refId\": \"B\",\r\n          \"range\": true,\r\n      \
+    \    \"instant\": false,\r\n          \"editorMode\": \"code\"\r\n        },\r\
+    \n        {\r\n          \"datasource\": {\r\n            \"type\": \"prometheus\"\
+    ,\r\n            \"uid\": \"prometheus\"\r\n          },\r\n          \"expr\"\
+    : \"n8n_nodejs_eventloop_lag_p99_seconds\",\r\n          \"legendFormat\": \"\
+    p99\",\r\n          \"refId\": \"C\",\r\n          \"range\": true,\r\n      \
+    \    \"instant\": false,\r\n          \"editorMode\": \"code\"\r\n        }\r\n\
+    \      ],\r\n      \"options\": {\r\n        \"legend\": {\r\n          \"displayMode\"\
+    : \"list\",\r\n          \"placement\": \"bottom\",\r\n          \"showLegend\"\
+    : true,\r\n          \"calcs\": []\r\n        },\r\n        \"tooltip\": {\r\n\
+    \          \"mode\": \"multi\",\r\n          \"sort\": \"desc\"\r\n        }\r\
+    \n      }\r\n    },\r\n    {\r\n      \"id\": 6,\r\n      \"type\": \"timeseries\"\
+    ,\r\n      \"title\": \"Память и процессор n8n\",\r\n      \"description\": \"\
+    Утечка в долгоживущем процессе проявляется ростом кучи между выполнениями. Отличать\
+    \ надо именно межпрогонный уровень, а не пики во время работы.\",\r\n      \"\
+    datasource\": {\r\n        \"type\": \"prometheus\",\r\n        \"uid\": \"prometheus\"\
+    \r\n      },\r\n      \"gridPos\": {\r\n        \"x\": 12,\r\n        \"y\": 16,\r\
+    \n        \"w\": 12,\r\n        \"h\": 8\r\n      },\r\n      \"fieldConfig\"\
+    : {\r\n        \"defaults\": {\r\n          \"unit\": \"bytes\",\r\n         \
+    \ \"color\": {\r\n            \"mode\": \"palette-classic\"\r\n          },\r\n\
+    \          \"custom\": {\r\n            \"drawStyle\": \"line\",\r\n         \
+    \   \"lineWidth\": 2,\r\n            \"fillOpacity\": 10,\r\n            \"showPoints\"\
+    : \"never\",\r\n            \"spanNulls\": true,\r\n            \"stacking\":\
+    \ {\r\n              \"mode\": \"none\"\r\n            }\r\n          },\r\n \
+    \         \"thresholds\": {\r\n            \"mode\": \"absolute\",\r\n       \
+    \     \"steps\": [\r\n              {\r\n                \"color\": \"green\"\
+    ,\r\n                \"value\": null\r\n              }\r\n            ]\r\n \
+    \         }\r\n        },\r\n        \"overrides\": []\r\n      },\r\n      \"\
+    targets\": [\r\n        {\r\n          \"datasource\": {\r\n            \"type\"\
+    : \"prometheus\",\r\n            \"uid\": \"prometheus\"\r\n          },\r\n \
+    \         \"expr\": \"n8n_process_resident_memory_bytes\",\r\n          \"legendFormat\"\
+    : \"память RSS\",\r\n          \"refId\": \"A\",\r\n          \"range\": true,\r\
+    \n          \"instant\": false,\r\n          \"editorMode\": \"code\"\r\n    \
+    \    },\r\n        {\r\n          \"datasource\": {\r\n            \"type\": \"\
+    prometheus\",\r\n            \"uid\": \"prometheus\"\r\n          },\r\n     \
+    \     \"expr\": \"n8n_nodejs_heap_size_used_bytes\",\r\n          \"legendFormat\"\
+    : \"куча Node.js\",\r\n          \"refId\": \"B\",\r\n          \"range\": true,\r\
+    \n          \"instant\": false,\r\n          \"editorMode\": \"code\"\r\n    \
+    \    }\r\n      ],\r\n      \"options\": {\r\n        \"legend\": {\r\n      \
+    \    \"displayMode\": \"list\",\r\n          \"placement\": \"bottom\",\r\n  \
+    \        \"showLegend\": true,\r\n          \"calcs\": []\r\n        },\r\n  \
+    \      \"tooltip\": {\r\n          \"mode\": \"multi\",\r\n          \"sort\"\
+    : \"desc\"\r\n        }\r\n      }\r\n    }\r\n  ]\r\n}"
+kind: ConfigMap
+metadata:
+  name: kvart-n8n-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: '1'
+    app.kubernetes.io/name: n8n
+    app.kubernetes.io/part-of: kvart-digest
+

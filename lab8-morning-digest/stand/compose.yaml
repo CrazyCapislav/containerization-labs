@@ -1,0 +1,118 @@
+# Стенд лабы 8: n8n и два MCP-сервера рядом с кластером k3d.
+#
+# Почему не внутрь кластера: образ n8n весит 1.79 ГБ, и k3d image import
+# разложил бы его на обе ноды, то есть 3.6 ГБ при 11 ГБ свободного диска.
+# Мониторинг от выноса не страдает: Prometheus из кластера достаёт до этой
+# сети через шлюз 172.18.0.1, потому что ноды k3d тоже живут в docker-сети.
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # Часовой пояс нужен расписанию: по кейсу дайджест уходит в 9:00 МСК.
+      GENERIC_TIMEZONE: Europe/Moscow
+      TZ: Europe/Moscow
+
+      # Метрики в формате Prometheus. Это основа Части 4: отдельный
+      # экспортер не понадобится, n8n отдаёт их сам на /metrics.
+      N8N_METRICS: "true"
+      N8N_METRICS_INCLUDE_DEFAULT_METRICS: "true"
+      N8N_METRICS_INCLUDE_WORKFLOW_ID_LABEL: "true"
+      N8N_METRICS_INCLUDE_NODE_TYPE_LABEL: "true"
+      N8N_METRICS_INCLUDE_API_ENDPOINTS: "true"
+      N8N_METRICS_INCLUDE_QUEUE_METRICS: "true"
+
+      # Доступ с Windows идёт по обычному HTTP, без сертификата.
+      N8N_SECURE_COOKIE: "false"
+      N8N_HOST: "0.0.0.0"
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+
+      # Ключ шифрования учётных данных. Задан явно, чтобы пересоздание
+      # контейнера не обесценило сохранённые ключи API.
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-lab8-kvart-digest-encryption-key}
+
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_RUNNERS_ENABLED: "true"
+
+      # Песочница узла Code по умолчанию запрещает встроенные модули Node.
+      # Разрешаем ровно один, fs: обычный узел читает чек-лист с диска,
+      # чтобы агент не тратил на это свой лимит токенов. Разрешение
+      # точечное, а не «*»: на учебном стенде это терпимо, в продакшене
+      # давать Code-узлам файловую систему не стоит.
+      NODE_FUNCTION_ALLOW_BUILTIN: "fs"
+
+      # Прямой выход на api.github.com с этой машины нестабилен, поэтому
+      # HTTP-узлы ходят через прокси на Windows-хосте. Адрес лежит в .env
+      # строкой PROXY_URL, потому что подсеть Hyper-V меняется.
+      #
+      # NO_PROXY обязателен: n8n разговаривает с MCP-серверами по именам
+      # внутри сети compose, и этот трафик через прокси гнать нельзя,
+      # иначе он просто не дойдёт.
+      HTTPS_PROXY: ${PROXY_URL:?нет PROXY_URL в .env}
+      HTTP_PROXY: ${PROXY_URL:?нет PROXY_URL в .env}
+      NO_PROXY: "localhost,127.0.0.1,::1,mcp-filesystem,mcp-github,host.docker.internal,172.18.0.0/16,172.20.0.0/16"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      # Общий рабочий каталог с filesystem-сервером: n8n видит те же файлы,
+      # что и MCP, и это удобно для отладки глазами.
+      - ./workspace:/workspace
+    depends_on:
+      - mcp-filesystem
+      - mcp-github
+    # Prometheus живёт в кластере k3d, а тот в своей docker-сети. Две сети
+    # между собой не маршрутизируются, зато обе видят виртуалку: её порт
+    # 30001 опубликован балансировщиком k3d. Имя host.docker.internal
+    # указывает на шлюз и переживёт смену подсети, в отличие от адреса.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+
+  # MCP-сервер №1: доступ к данным на диске.
+  # Читает моки Jira и логов шлюза, читает базовые значения для сравнения,
+  # пишет готовый отчёт. Разрешённый каталог ровно один, /workspace.
+  mcp-filesystem:
+    build: ./mcp-filesystem
+    container_name: mcp-filesystem
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./workspace:/workspace
+
+  # MCP-сервер №2: доступ к GitHub.
+  # Читает историю коммитов (в кейсе это деплои) и заводит задачу
+  # по пунктам «требует внимания». Умеет HTTP сам, мост не нужен.
+  mcp-github:
+    image: ghcr.io/github/github-mcp-server:latest
+    container_name: mcp-github
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    # Прямого выхода на api.github.com у виртуалки нет: маршрутизация на
+    # Windows-хосте его режет. Трафик идёт через прокси, который слушает
+    # на Windows, а не на виртуалке. Здесь легко ошибиться: host-gateway
+    # внутри контейнера указывает на ВИРТУАЛКУ, а нужен адрес её шлюза.
+    # Он вычисляется из таблицы маршрутизации и кладётся в .env строкой
+    # PROXY_URL, потому что подсеть Hyper-V меняется при перезагрузке.
+    environment:
+      HTTPS_PROXY: ${PROXY_URL:?нет PROXY_URL в .env}
+      HTTP_PROXY: ${PROXY_URL:?нет PROXY_URL в .env}
+      NO_PROXY: "localhost,127.0.0.1"
+
+    # Токена в окружении нет намеренно. В режиме http сервер авторизует
+    # КАЖДЫЙ запрос заголовком Authorization: Bearer, а переменную окружения
+    # читает только режим stdio. Поэтому токен живёт в хранилище учётных
+    # данных n8n, а не в окружении контейнера: так он не виден ни в
+    # docker inspect, ни в списке процессов.
+    #
+    # Состав toolkit задаётся флагом ниже как значение по умолчанию, но
+    # клиент может сузить его на лету заголовками X-MCP-Toolsets и X-MCP-Tools.
+    command: ["http", "--port", "8082", "--listen-host", "0.0.0.0", "--toolsets", "${GITHUB_TOOLSETS:-repos,issues}"]
+
+volumes:
+  n8n_data:

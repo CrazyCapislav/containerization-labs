@@ -1,0 +1,78 @@
+{
+  "name": "Кварт: сводка по релизу (шаг 1, сбор без AI)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "name": "Запуск вручную",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-420, 0]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "p1", "name": "owner",   "value": "CrazyCapislav",        "type": "string" },
+            { "id": "p2", "name": "repo",    "value": "containerization-labs", "type": "string" },
+            { "id": "p3", "name": "tagFrom", "value": "v2.7.0",                "type": "string" },
+            { "id": "p4", "name": "tagTo",   "value": "v2.8.0",                "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000002",
+      "name": "Параметры релиза",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-200, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Разворачиваем один набор параметров в два запроса: по одному на тег.\n// Так следующий узел отработает дважды, и не нужен Merge.\nconst p = $input.first().json;\nreturn [\n  { json: { role: 'from', tag: p.tagFrom, owner: p.owner, repo: p.repo, tagFrom: p.tagFrom, tagTo: p.tagTo } },\n  { json: { role: 'to',   tag: p.tagTo,   owner: p.owner, repo: p.repo, tagFrom: p.tagFrom, tagTo: p.tagTo } }\n];"
+      },
+      "id": "a1000000-0000-4000-8000-000000000003",
+      "name": "Развернуть в два запроса",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [20, 0]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $json.owner }}/{{ $json.repo }}/commits/{{ $json.tag }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Accept", "value": "application/vnd.github+json" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000004",
+      "name": "Разрешить тег в дату",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Склеиваем два ответа в одно окно релиза.\n// since сдвинут на секунду вперёд: сам коммит базового тега\n// в релиз не входит, он был выкачен в прошлый раз.\nconst items = $input.all();\nconst params = $('Развернуть в два запроса').first().json;\n\nconst byRole = {};\nfor (let i = 0; i < items.length; i++) {\n  const role = $('Развернуть в два запроса').all()[i].json.role;\n  byRole[role] = items[i].json;\n}\n\nif (!byRole.from || !byRole.to) {\n  throw new Error('не удалось разрешить оба тега');\n}\n\nconst fromDate = new Date(byRole.from.commit.committer.date);\nconst since = new Date(fromDate.getTime() + 1000).toISOString();\nconst until = byRole.to.commit.committer.date;\n\nreturn [{ json: {\n  owner: params.owner,\n  repo: params.repo,\n  tagFrom: params.tagFrom,\n  tagTo: params.tagTo,\n  shaFrom: byRole.from.sha,\n  shaTo: byRole.to.sha,\n  since,\n  until,\n  branch: 'kvart-demo',\n  issueTitle: `Релиз ${params.tagTo}: чек-лист выкатки`,\n  reportPath: `/workspace/reports/release-${params.tagTo}.md`,\n  checklistPath: '/workspace/release/checklist.md',\n  templatePath: '/workspace/release/notes-template.md'\n}}];"
+      },
+      "id": "a1000000-0000-4000-8000-000000000005",
+      "name": "Собрать окно релиза",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 0]
+    }
+  ],
+  "connections": {
+    "Запуск вручную":            { "main": [[{ "node": "Параметры релиза",          "type": "main", "index": 0 }]] },
+    "Параметры релиза":          { "main": [[{ "node": "Развернуть в два запроса",  "type": "main", "index": 0 }]] },
+    "Развернуть в два запроса":  { "main": [[{ "node": "Разрешить тег в дату",      "type": "main", "index": 0 }]] },
+    "Разрешить тег в дату":      { "main": [[{ "node": "Собрать окно релиза",       "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

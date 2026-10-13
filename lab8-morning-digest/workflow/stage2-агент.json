@@ -1,0 +1,280 @@
+{
+  "name": "Кварт: сводка по релизу",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "name": "Запуск вручную",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "p1",
+              "name": "owner",
+              "value": "CrazyCapislav",
+              "type": "string"
+            },
+            {
+              "id": "p2",
+              "name": "repo",
+              "value": "containerization-labs",
+              "type": "string"
+            },
+            {
+              "id": "p3",
+              "name": "tagFrom",
+              "value": "v2.7.0",
+              "type": "string"
+            },
+            {
+              "id": "p4",
+              "name": "tagTo",
+              "value": "v2.8.0",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000002",
+      "name": "Параметры релиза",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Разворачиваем один набор параметров в два запроса: по одному на тег.\n// Так следующий узел отработает дважды, и не нужен Merge.\nconst p = $input.first().json;\nreturn [\n  { json: { role: 'from', tag: p.tagFrom, owner: p.owner, repo: p.repo, tagFrom: p.tagFrom, tagTo: p.tagTo } },\n  { json: { role: 'to',   tag: p.tagTo,   owner: p.owner, repo: p.repo, tagFrom: p.tagFrom, tagTo: p.tagTo } }\n];"
+      },
+      "id": "a1000000-0000-4000-8000-000000000003",
+      "name": "Развернуть в два запроса",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        20,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $json.owner }}/{{ $json.repo }}/commits/{{ $json.tag }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000004",
+      "name": "Разрешить тег в дату",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Склеиваем два ответа в одно окно релиза.\n// since сдвинут на секунду вперёд: сам коммит базового тега\n// в релиз не входит, он был выкачен в прошлый раз.\nconst items = $input.all();\nconst params = $('Развернуть в два запроса').first().json;\n\nconst byRole = {};\nfor (let i = 0; i < items.length; i++) {\n  const role = $('Развернуть в два запроса').all()[i].json.role;\n  byRole[role] = items[i].json;\n}\n\nif (!byRole.from || !byRole.to) {\n  throw new Error('не удалось разрешить оба тега');\n}\n\nconst fromDate = new Date(byRole.from.commit.committer.date);\nconst since = new Date(fromDate.getTime() + 1000).toISOString();\nconst until = byRole.to.commit.committer.date;\n\nreturn [{ json: {\n  owner: params.owner,\n  repo: params.repo,\n  tagFrom: params.tagFrom,\n  tagTo: params.tagTo,\n  shaFrom: byRole.from.sha,\n  shaTo: byRole.to.sha,\n  since,\n  until,\n  branch: 'kvart-demo',\n  issueTitle: `Релиз ${params.tagTo}: чек-лист выкатки`,\n  reportPath: `/workspace/reports/release-${params.tagTo}.md`,\n  checklistPath: '/workspace/release/checklist.md',\n  templatePath: '/workspace/release/notes-template.md'\n}}];"
+      },
+      "id": "a1000000-0000-4000-8000-000000000005",
+      "name": "Собрать окно релиза",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Собери сводку по релизу {{ $json.tagTo }}.\n\nПараметры:\n- репозиторий: {{ $json.owner }}/{{ $json.repo }}\n- ветка: {{ $json.branch }}\n- диапазон тегов: {{ $json.tagFrom }} .. {{ $json.tagTo }}\n- окно по времени: since {{ $json.since }}, until {{ $json.until }}\n- шаблон сводки: {{ $json.templatePath }}\n- чек-лист выкатки: {{ $json.checklistPath }}\n- куда записать сводку: {{ $json.reportPath }}\n- заголовок задачи: {{ $json.issueTitle }}\n\nВыполни порядок действий из системной инструкции и в конце коротко отчитайся: сколько коммитов разобрано, сколько помечено рискованными, записан ли файл, создана ли задача или найдена существующая.",
+        "options": {
+          "systemMessage": "Ты готовишь сводку по релизу для дежурного по релизу компании «Кварт» (доставка продуктов, 40 сервисов).\n\nПОРЯДОК ДЕЙСТВИЙ. Выполняй строго по шагам, не пропуская:\n\n1. Прочитай шаблон сводки: read_text_file по пути из задания (templatePath).\n2. Прочитай чек-лист выкатки: read_text_file по пути из задания (checklistPath).\n3. Получи коммиты релиза: list_commits с owner, repo, sha равным ветке из задания, since и until из задания, perPage 100 и ОБЯЗАТЕЛЬНО fields равным [\"sha\",\"commit\"]. Параметр fields сокращает ответ втрое: без него ответ не помещается в лимит модели и запрос падает. Вызови list_commits ровно один раз.\n4. Проверь, нет ли уже задачи на этот тег: list_issues с owner и repo. Состояние не указывай — по умолчанию вернутся и открытые, и закрытые. Ищи среди заголовков точное совпадение с issueTitle из задания.\n5. Разложи коммиты по разделам шаблона и пометь рискованные.\n6. Запиши сводку: write_file по пути reportPath из задания.\n7. Если на шаге 4 задача НЕ найдена — создай её: issue_write с method create, заголовком issueTitle и телом из чек-листа плюс список рискованных изменений. Если задача найдена — НЕ создавай вторую.\n\nПРИЗНАКИ РИСКОВАННОГО ИЗМЕНЕНИЯ. Помечай коммит рискованным, если он подпадает хотя бы под один признак:\n\n- Миграции и схема базы данных. Откатить миграцию сложнее, чем код, и ошибка там дорого стоит.\n- Оплата и заказы. Это ядро сервиса, ошибка здесь бьёт по выручке и доверию.\n- Откаты и хотфиксы. Признак того, что в прошлом релизе что-то сломалось; дежурному нужно знать, что именно.\n- Конфигурация выкатки: CI, переменные окружения, feature flags. Ошибка здесь затрагивает все сервисы сразу.\n\nРазмер коммита признаком НЕ является: большой рефакторинг обычно безопасен, а правка одной строки в платёжном модуле может быть опаснее сотни строк.\n\nПРАВИЛА:\n\n- Если источник не ответил, сводка всё равно пишется, а в соответствующем разделе указывается «источник недоступен, раздел не проверен». Вывод «изменений нет» по непроверенному разделу делать запрещено: дежурный должен видеть разницу между «ничего не было» и «не смотрели».\n- В разделе «требует внимания дежурного» не больше 5 пунктов. Если рискованных изменений больше, оставляй те, что затрагивают оплату, заказы и миграции, остальные переноси во внутренние изменения одной строкой.\n- В каждом пункте раздела «требует внимания» обязательно указывай: что меняется, почему это риск, и какой пункт чек-листа это закрывает. Ссылку на коммит собирай сам по образцу https://github.com/OWNER/REPO/commit/SHA, подставляя owner, repo и sha из задания и ответа list_commits.\n- Пустой раздел не выбрасывается, а помечается строкой «изменений нет».\n- Задачу не создавай повторно, если задача с таким заголовком уже существует в любом состоянии. В сводку в этом случае добавь строку «задача на этот тег уже есть».\n\nЯЗЫК. Сводка на русском. В разделе «что увидят клиенты и курьеры» пиши человеческим языком, без имён файлов, функций и номеров коммитов. В остальных разделах технические детали уместны.\n\nЭКОНОМИЯ КОНТЕКСТА. У модели жёсткий лимит на размер одного запроса, а результат каждого вызова инструмента остаётся в разговоре и пересылается заново на каждом следующем шаге. Поэтому: не вызывай один и тот же инструмент дважды с теми же аргументами, не запрашивай полей больше, чем нужно, и пиши сводку сразу набело, без черновиков в ответе.",
+          "maxIterations": 25,
+          "returnIntermediateSteps": true
+        }
+      },
+      "id": "a1000000-0000-4000-8000-000000000006",
+      "name": "Агент: сборка сводки",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        700,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "a1000000-0000-4000-8000-000000000007",
+      "name": "Groq: gpt-oss-120b",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        620,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "endpointUrl": "http://mcp-filesystem:8001/mcp",
+        "serverTransport": "httpStreamable",
+        "authentication": "none",
+        "include": "selected",
+        "includeTools": [
+          "read_text_file",
+          "write_file"
+        ],
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000008",
+      "name": "MCP: файлы",
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [
+        800,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "endpointUrl": "http://mcp-github:8082/mcp",
+        "serverTransport": "httpStreamable",
+        "authentication": "headerAuth",
+        "include": "selected",
+        "includeTools": [
+          "list_commits",
+          "list_issues",
+          "issue_write"
+        ],
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000009",
+      "name": "MCP: GitHub",
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [
+        980,
+        220
+      ]
+    }
+  ],
+  "connections": {
+    "Запуск вручную": {
+      "main": [
+        [
+          {
+            "node": "Параметры релиза",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Параметры релиза": {
+      "main": [
+        [
+          {
+            "node": "Развернуть в два запроса",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Развернуть в два запроса": {
+      "main": [
+        [
+          {
+            "node": "Разрешить тег в дату",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Разрешить тег в дату": {
+      "main": [
+        [
+          {
+            "node": "Собрать окно релиза",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Собрать окно релиза": {
+      "main": [
+        [
+          {
+            "node": "Агент: сборка сводки",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq: gpt-oss-120b": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Агент: сборка сводки",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP: файлы": {
+      "ai_tool": [
+        [
+          {
+            "node": "Агент: сборка сводки",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP: GitHub": {
+      "ai_tool": [
+        [
+          {
+            "node": "Агент: сборка сводки",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
