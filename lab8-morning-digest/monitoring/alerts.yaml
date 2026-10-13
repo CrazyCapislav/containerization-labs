@@ -32,8 +32,27 @@ spec:
         #    не даёт: increase учитывает сбросы. А вот ручная отмена
         #    прогона алерт поднимет: в n8n метка status принимает всего
         #    два значения, и canceled попадает в ту же метку failed.
+        #
+        #    Второе слагаемое в выражении обязательно, и это не украшение.
+        #    increase() считает прирост между наблюдениями ВНУТРИ окна, а
+        #    серия {status="failed"} рождается сразу со значением 1: прежнего
+        #    наблюдения с нулём не существует, прироста нет, и выражение
+        #    возвращает 0 при реально упавшем прогоне. Проверено: метрика
+        #    равна 1, increase равен 0. Счётчики n8n сбрасываются при каждом
+        #    перезапуске, поэтому без второго слагаемого алерт пропускал бы
+        #    первый отказ после каждого рестарта.
+        #
+        #    unless ... offset 15m истинно ровно тогда, когда серии 15 минут
+        #    назад ещё не было, то есть ловит именно первое появление.
         - alert: KvartDigestRunFailed
-          expr: increase(n8n_workflow_execution_duration_seconds_count{status="failed"}[15m]) > 0
+          expr: |
+            increase(n8n_workflow_execution_duration_seconds_count{status="failed"}[15m]) > 0
+              or
+            (
+              n8n_workflow_execution_duration_seconds_count{status="failed"} > 0
+              unless
+              n8n_workflow_execution_duration_seconds_count{status="failed"} offset 15m
+            )
           labels:
             severity: critical
             service: kvart-release-digest
