@@ -637,22 +637,25 @@ preemption: 0/2 nodes are available: 2 Preemption is not helpful for scheduling.
 
 | Файл | Что внутри |
 |---|---|
-| `lab3-platform/src/cmd/batch/main.go` | заглушка фоновой нагрузки |
-| `lab3-platform/helm/shop/templates/batch.yaml` | шаблон `batch` с пробами и ресурсами |
-| `lab3-platform/helm/shop/templates/_spread.tpl` | разнесение, оба механизма |
-| `lab3-platform/helm/shop/templates/priority.yaml` | два класса приоритета |
-| `lab3-platform/helm/shop/templates/pdb.yaml` | бюджет нарушений для `api` |
-| `lab3-platform/helm/shop/templates/monitoring.yaml` | группа алертов `shop.resources` |
-| `lab3-platform/helm/shop/templates/dashboard.yaml` | дашборд как ConfigMap для sidecar Grafana |
-| `lab3-platform/helm/shop/files/dashboard-resources.json` | сам дашборд, шесть панелей |
-| `load.js` | сценарий k6 с порогами SLA |
-| `docs/krr-report.json` | рекомендации `krr` |
-| `docs/part6-preemption.txt` | доказательства `Pending` и вытеснения |
-| `docs/part7-oomkilled.txt` | OOM по своему лимиту: cgroup и журнал ядра |
-| `docs/part7-eviction.txt` | выселение по давлению ноды |
-| `docs/part9-alert-firing.txt` | алерт в состоянии `firing` |
-| `docs/k6-before-fix.txt` | проваленный прогон с лимитом 50m |
-| `docs/k6-after-fix.txt` | тот же прогон после исправления лимитов |
+| [`lab3-platform/src/cmd/batch/main.go`](../lab3-platform/src/cmd/batch/main.go) | заглушка фоновой нагрузки |
+| [`lab3-platform/helm/shop/templates/batch.yaml`](../lab3-platform/helm/shop/templates/batch.yaml) | шаблон `batch` с пробами и ресурсами |
+| [`lab3-platform/helm/shop/templates/_spread.tpl`](../lab3-platform/helm/shop/templates/_spread.tpl) | разнесение, оба механизма |
+| [`lab3-platform/helm/shop/templates/priority.yaml`](../lab3-platform/helm/shop/templates/priority.yaml) | два класса приоритета |
+| [`lab3-platform/helm/shop/templates/pdb.yaml`](../lab3-platform/helm/shop/templates/pdb.yaml) | бюджет нарушений для `api` |
+| [`lab3-platform/helm/shop/templates/monitoring.yaml`](../lab3-platform/helm/shop/templates/monitoring.yaml) | группа алертов `shop.resources` |
+| [`lab3-platform/helm/shop/templates/dashboard.yaml`](../lab3-platform/helm/shop/templates/dashboard.yaml) | дашборд как ConfigMap для sidecar Grafana |
+| [`lab3-platform/helm/shop/files/dashboard-resources.json`](../lab3-platform/helm/shop/files/dashboard-resources.json) | сам дашборд, шесть панелей |
+| [`cluster/k3s-eviction.yaml`](cluster/k3s-eviction.yaml) | порог выселения kubelet на нодах: без сигнала `memory.available` Часть 7 невозможна |
+| [`load.js`](load.js) | сценарий k6 с порогами SLA |
+| [`docs/krr-report.json`](docs/krr-report.json) | рекомендации `krr` |
+| [`docs/krr-report.txt`](docs/krr-report.txt) | тот же отчёт в читаемом виде, как его печатает инструмент |
+| [`docs/part6-preemption.txt`](docs/part6-preemption.txt) | доказательства `Pending` и вытеснения |
+| [`docs/part7-oomkilled.txt`](docs/part7-oomkilled.txt) | OOM по своему лимиту: cgroup и журнал ядра |
+| [`docs/part7-eviction.txt`](docs/part7-eviction.txt) | выселение по давлению ноды |
+| [`docs/part9-alert-firing.txt`](docs/part9-alert-firing.txt) | алерт в состоянии `firing` |
+| [`docs/k6-baseline.txt`](docs/k6-baseline.txt) | опорный прогон до перегрузки: `p95` 69 мс, ошибок 0% |
+| [`docs/k6-before-fix.txt`](docs/k6-before-fix.txt) | проваленный прогон с лимитом 50m |
+| [`docs/k6-after-fix.txt`](docs/k6-after-fix.txt) | тот же прогон после исправления лимитов |
 
 ---
 
