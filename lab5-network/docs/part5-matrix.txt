@@ -94,3 +94,14 @@ shop-db-1 1/1 Running
 shop-worker-649f7dc54f-f2v6m 1/1 Running
 shop-worker-649f7dc54f-kksvc 1/1 Running
 shop-db   2d1h   1     1     Cluster in healthy state   shop-db-1
+
+== Вердикт по обходу через NodePort (отдельный чистый замер) ==
+# Снято после починки Части 6, при остановленном генераторе трафика:
+# в прогоне выше вердиктов по порту 30006 не осталось, они вытеснились
+# из кольцевого буфера Hubble более поздними событиями.
+# Дроп происходит на egress самого нарушителя, до трансляции адреса,
+# а идентичность назначения — remote-node.
+Oct 16 19:09:05.135: shop/intruder:32780 (ID:15889) <> 172.18.0.2:30006 (remote-node) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 19:09:05.135: shop/intruder:32780 (ID:15889) <> 172.18.0.2:30006 (remote-node) Policy denied DROPPED (TCP Flags: SYN)
+Oct 16 19:09:06.152: shop/intruder:32780 (ID:15889) <> 172.18.0.2:30006 (remote-node) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 19:09:06.152: shop/intruder:32780 (ID:15889) <> 172.18.0.2:30006 (remote-node) Policy denied DROPPED (TCP Flags: SYN)
