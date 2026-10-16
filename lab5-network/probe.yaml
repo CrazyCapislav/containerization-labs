@@ -1,0 +1,122 @@
+# Пробник для Части 5: два пода в shop, которые играют роли из матрицы
+# (lab5-network/matrix.md). Различаются только меткой app.kubernetes.io/name —
+# по ней сетевые политики решают, кому что можно.
+#
+#   client   — легальный клиент: api:8080 и DNS
+#   intruder — посторонний: только DNS
+#
+# Оба проходят политики Kyverno из lab3-platform/policies:
+#   require-labels       — name и part-of
+#   require-resources    — requests.cpu, requests.memory, limits.memory
+#   require-probes       — readiness и liveness с явным periodSeconds
+#   disallow-privileged  — privileged и allowPrivilegeEscalation = false
+#   restrict-registries  — образ из ghcr.io/*
+#
+# part-of=shop у постороннего стоит не для красоты: без него Kyverno не пустит
+# под в namespace, а с ним он проверяет, что разрешения выдаются по name.
+#
+# Образ: тот же netshoot, что на Docker Hub, но из ghcr.io. Тег закрепить
+# digest-ом, который реально подтянулся на ноде (см. README, «Пробник»).
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: client
+  namespace: shop
+  labels:
+    app.kubernetes.io/name: client
+    app.kubernetes.io/part-of: shop
+    app.kubernetes.io/component: probe
+spec:
+  # Токен API пробнику не нужен: он проверяет сеть, а не ходит в кластер.
+  automountServiceAccountToken: false
+  # sleep не завершится по SIGTERM сам; trap в команде ниже это делает,
+  # а короткий grace — страховка на случай, если trap не сработает.
+  terminationGracePeriodSeconds: 5
+  containers:
+    - name: probe
+      image: ghcr.io/nicolaka/netshoot:v0.13
+      imagePullPolicy: IfNotPresent
+      # Под-инструмент: своей работы нет, ждёт kubectl exec.
+      # trap + wait нужен, чтобы PID 1 реагировал на SIGTERM: ядро не
+      # доставляет PID 1 сигналы без установленного обработчика.
+      command: ["/bin/sh", "-c", "trap 'exit 0' TERM INT; sleep infinity & wait"]
+      # Признак готовности — на месте инструменты, которыми идёт проверка.
+      # Сеть здесь намеренно не трогается: сеть и есть предмет проверки,
+      # и проба, падающая от политики, смешала бы «пробник сломан» с
+      # «политика работает». Обоснование — в README.
+      readinessProbe:
+        exec:
+          command: ["/bin/sh", "-c", "command -v curl && command -v nc && command -v dig"]
+        initialDelaySeconds: 1
+        periodSeconds: 10
+        timeoutSeconds: 3
+      # Признак живости — в контейнер можно войти и выполнить команду.
+      # Именно так пробником и пользуются (kubectl exec), поэтому отказ exec
+      # — единственная поломка, которую лечит перезапуск.
+      livenessProbe:
+        exec:
+          command: ["/bin/true"]
+        initialDelaySeconds: 5
+        periodSeconds: 30
+        timeoutSeconds: 3
+        failureThreshold: 3
+      securityContext:
+        privileged: false
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        # curl, nc и dig работают без привилегий. ping без NET_RAW не
+        # заработает — тесты матрицы идут по TCP/UDP, ICMP в ней нет.
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          cpu: 200m
+          memory: 128Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: intruder
+  namespace: shop
+  labels:
+    app.kubernetes.io/name: intruder
+    app.kubernetes.io/part-of: shop
+    app.kubernetes.io/component: probe
+spec:
+  automountServiceAccountToken: false
+  terminationGracePeriodSeconds: 5
+  containers:
+    - name: probe
+      image: ghcr.io/nicolaka/netshoot:v0.13
+      imagePullPolicy: IfNotPresent
+      command: ["/bin/sh", "-c", "trap 'exit 0' TERM INT; sleep infinity & wait"]
+      readinessProbe:
+        exec:
+          command: ["/bin/sh", "-c", "command -v curl && command -v nc && command -v dig"]
+        initialDelaySeconds: 1
+        periodSeconds: 10
+        timeoutSeconds: 3
+      livenessProbe:
+        exec:
+          command: ["/bin/true"]
+        initialDelaySeconds: 5
+        periodSeconds: 30
+        timeoutSeconds: 3
+        failureThreshold: 3
+      securityContext:
+        privileged: false
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          cpu: 200m
+          memory: 128Mi

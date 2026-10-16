@@ -1,0 +1,161 @@
+{{- /*
+Стандартные NetworkPolicy (Часть 4 лабы 5). Источник правил — матрица
+lab5-network/matrix.md. Здесь только то, что выражается стандартом: потоки
+между подами и из других namespace по меткам. Вход снаружи и выход в
+API-сервер стандартом не описываются — они в ciliumnetworkpolicy.yaml.
+
+Модель: default-deny в обе стороны, затем точечные разрешения. Политики
+аддитивны: под пропускает поток, если его разрешила хоть одна политика.
+Каждый поток между подами `shop` — это пара: egress у источника и ingress
+у получателя. Без одной из половин поток режется молча.
+
+Поды выбираются по app.kubernetes.io/name, а не по part-of: part-of=shop
+несёт и посторонний под (иначе его не пустит Kyverno require-labels).
+*/ -}}
+{{- if .Values.networkPolicy.enabled }}
+{{- $np := .Values.networkPolicy }}
+{{- $rel := .Release.Name }}
+{{- $partOf := .Values.partOf }}
+# 1. Запрет по умолчанию: под без разрешающей политики не принимает и не
+# отправляет ничего. Ответный трафик разрешённых соединений проходит сам:
+# политики stateful.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $rel }}-default-deny
+  labels:
+    {{- include "shop.labels" (dict "name" "network-policy" "partOf" $partOf "release" $rel) | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# 2. DNS. Нужен тем, кто открывает соединения по имени: api и worker
+# (строка подключения из секрета CNPG — это имя shop-db-rw.shop.svc),
+# пробник и посторонний — чтобы отказ политики не путался с отказом DNS.
+# batch и postgres по имени никуда не ходят, им DNS закрыт.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $rel }}-allow-dns
+  labels:
+    {{- include "shop.labels" (dict "name" "network-policy" "partOf" $partOf "release" $rel) | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [{{ join ", " $np.dns.clients }}]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.dns.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $np.dns.podLabels | nindent 14 }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- range $np.flows }}
+---
+# 3. Поток {{ .from }} → {{ .to }}:{{ .port }}, половина источника.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $rel }}-{{ .from }}-egress-to-{{ .to }}
+  labels:
+    {{- include "shop.labels" (dict "name" "network-policy" "partOf" $partOf "release" $rel) | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .from }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ .to }}
+      ports:
+        - protocol: TCP
+          port: {{ .port }}
+---
+# 3. Поток {{ .from }} → {{ .to }}:{{ .port }}, половина получателя.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $rel }}-{{ .to }}-ingress-from-{{ .from }}
+  labels:
+    {{- include "shop.labels" (dict "name" "network-policy" "partOf" $partOf "release" $rel) | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .to }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ .from }}
+      ports:
+        - protocol: TCP
+          port: {{ .port }}
+{{- end }}
+---
+# 4. Сбор метрик. ServiceMonitor ходит в порт http у api, worker и batch.
+# Порт указан по имени: он разрешается у каждого выбранного пода отдельно,
+# поэтому 8080 у api/batch и 8081 у worker покрываются одним правилом.
+# namespaceSelector и podSelector в одном элементе from — это И, а не ИЛИ:
+# только поды prometheus и только из namespace monitoring.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $rel }}-allow-metrics-scrape
+  labels:
+    {{- include "shop.labels" (dict "name" "network-policy" "partOf" $partOf "release" $rel) | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [{{ join ", " $np.monitoring.targets }}]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.monitoring.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $np.monitoring.podLabels | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: http
+---
+# 5. Оператор CloudNativePG опрашивает instance manager в поде базы.
+# Без этого потока база работает, но оператор теряет её статус.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $rel }}-postgres-ingress-from-cnpg-operator
+  labels:
+    {{- include "shop.labels" (dict "name" "network-policy" "partOf" $partOf "release" $rel) | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.cnpgOperator.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $np.cnpgOperator.podLabels | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ $np.cnpgOperator.port }}
+{{- end }}

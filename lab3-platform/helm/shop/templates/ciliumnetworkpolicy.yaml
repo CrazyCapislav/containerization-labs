@@ -1,0 +1,71 @@
+{{- /*
+CiliumNetworkPolicy (Часть 4 лабы 5). Здесь потоки, у которых на другой
+стороне не под, а участник кластера без меток: внешний клиент, пришедший
+через NodePort, и API-сервер. Стандартная NetworkPolicy описывает их только
+через ipBlock, а ipBlock в Cilium не матчит identity нод кластера
+(host, remote-node, kube-apiserver). Cilium оперирует такими участниками как
+сущностями (entities), и стандарт этого понятия не знает.
+
+Требует CRD cilium.io/v2 — без Cilium в кластере helm install упадёт,
+поэтому файл выключается отдельно: networkPolicy.cilium.enabled.
+*/ -}}
+{{- if and .Values.networkPolicy.enabled .Values.networkPolicy.cilium.enabled }}
+{{- $np := .Values.networkPolicy }}
+{{- $rel := .Release.Name }}
+{{- $partOf := .Values.partOf }}
+# 6. Вход снаружи в api через NodePort.
+# При externalTrafficPolicy: Cluster источник доходит до пода как world
+# (бэкенд на той же ноде и без SNAT), как remote-node (бэкенд на другой
+# ноде, нода сделала SNAT) или как host (бэкенд на той же ноде, но
+# kube-proxy в режиме iptables маскарадит внешний трафик NodePort всегда).
+# host перечислен явно: Cilium пускает его и сам, через allow-localhost,
+# но тогда поток зависел бы от настройки агента, а не от этой политики.
+# Открыть порт «всем» нельзя: тогда пройдёт и посторонний под. Сущности
+# различают источник по identity, а не по адресу.
+# Оговорка: remote-node — это любая нода, то есть заход постороннего через
+# <IP ноды>:30006 после SNAT выглядит так же. Проверяется в Части 5.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ $rel }}-api-ingress-from-outside
+  labels:
+    {{- include "shop.labels" (dict "name" "network-policy" "partOf" $partOf "release" $rel) | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  ingress:
+    - fromEntities:
+        {{- toYaml $np.cilium.externalEntities | nindent 8 }}
+      toPorts:
+        - ports:
+            - port: {{ .Values.api.service.port | quote }}
+              protocol: TCP
+---
+# 7. Instance manager внутри пода базы сам ходит в API-сервер: читает
+# объект Cluster и пишет его статус. Обращается по KUBERNETES_SERVICE_HOST,
+# то есть по IP, без DNS.
+# Порт — порт СЕРВИСА kubernetes (10.43.0.1:443), а не targetPort 6443.
+# Трансляцию делает kube-proxy в iptables хоста, а политика проверяется
+# раньше: cil_from_container висит на tcx ingress интерфейса lxc и
+# срабатывает при выходе пакета из пода, до NAT. Поэтому Cilium видит 443.
+# Совпадёт ли при этом сущность kube-apiserver с адресом ClusterIP —
+# проверяется в Hubble; если нет, правило придётся писать на toCIDR.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ $rel }}-postgres-egress-to-apiserver
+  labels:
+    {{- include "shop.labels" (dict "name" "network-policy" "partOf" $partOf "release" $rel) | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: {{ $np.cilium.apiServerPort | quote }}
+              protocol: TCP
+{{- end }}

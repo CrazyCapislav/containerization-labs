@@ -1,0 +1,19 @@
+# Режим kube-proxy на стенде (k3s v1.35.5 в k3d)
+
+## kube-proxy не отдельный под — он встроен в агент k3s
+подов kube-proxy нет
+
+## Правила сервисов в iptables на ноде
+цепочек KUBE-SVC: 203
+цепочек KUBE-SEP: 216
+
+## Пример правил для shop-api
+-A KUBE-EXT-EDHDEE3SSQESRSSU -m comment --comment "masquerade traffic for shop/shop-api:http external destinations" -j KUBE-MARK-MASQ
+-A KUBE-NODEPORTS -d 127.0.0.0/8 -p tcp -m comment --comment "shop/shop-api:http" -m tcp --dport 30006 -m nfacct --nfacct-name  localhost_nps_accepted_pkts -j KUBE-EXT-EDHDEE3SSQESRSSU
+-A KUBE-NODEPORTS -p tcp -m comment --comment "shop/shop-api:http" -m tcp --dport 30006 -j KUBE-EXT-EDHDEE3SSQESRSSU
+-A KUBE-SEP-5POXUCS2X4S53NPA -s 10.42.1.23/32 -m comment --comment "shop/shop-api:http" -j KUBE-MARK-MASQ
+-A KUBE-SEP-5POXUCS2X4S53NPA -p tcp -m comment --comment "shop/shop-api:http" -m tcp -j DNAT --to-destination 10.42.1.23:8080
+-A KUBE-SEP-M2H4XLN63YWUPELZ -s 10.42.0.242/32 -m comment --comment "shop/shop-api:http" -j KUBE-MARK-MASQ
+
+## IPVS
+ipvsadm отсутствует, модуль ip_vs не используется

@@ -165,7 +165,7 @@ database:
   secretKey: uri
 
 postgres:
-  enabled: false
+  enabled: true
   # Имя объекта Cluster. Оператор создаёт секрет приложения с именем
   # <clusterName>-app, поэтому database.secretName должен ему соответствовать.
   clusterName: shop-db
@@ -193,10 +193,75 @@ postgres:
 
 monitoring:
   serviceMonitor:
-    enabled: false
+    enabled: true
     interval: 15s
   prometheusRule:
-    enabled: false
+    enabled: true
+  # Сетевые алерты (Часть 7 лабы 5).
+  network:
+    enabled: true
+    # Фоновый уровень отклонённых политиками пакетов зависит от стенда:
+    # пробники, зонды и собственные прогоны матрицы дают постоянный фон.
+    # Порог берётся выше этого фона, иначе алерт станет шумом.
+    policyDeniedPerSec: 1
   # Дашборд лабы 4. Едет ConfigMap-ом, который подхватывает sidecar Grafana.
   dashboard:
     enabled: true
+
+# Сетевые политики (Часть 4 лабы 5). Матрица связности — в lab5-network/matrix.md.
+# По умолчанию выключены: default-deny без проверки пробником (Часть 5)
+# ломает всё, что в матрицу не попало. Включаются явно при установке.
+networkPolicy:
+  enabled: true
+  dns:
+    namespace: kube-system
+    # CoreDNS в k3s.
+    podLabels:
+      k8s-app: kube-dns
+    # client и intruder — роли пробника из Части 5 (значение app.kubernetes.io/name).
+    # Пробник ставится отдельным манифестом, не этим чартом.
+    clients: [api, worker, client, intruder]
+  # Потоки между подами shop. Каждый превращается в пару политик:
+  # egress у from и ingress у to. Порт — порт пода, а не сервиса:
+  # политика видит пакет уже после трансляции ClusterIP.
+  flows:
+    - from: client
+      to: api
+      port: 8080
+    - from: api
+      to: postgres
+      port: 5432
+    - from: worker
+      to: postgres
+      port: 5432
+  monitoring:
+    namespace: monitoring
+    # Поды Prometheus из kube-prometheus-stack.
+    podLabels:
+      app.kubernetes.io/name: prometheus
+    targets: [api, worker, batch]
+  cnpgOperator:
+    namespace: cnpg-system
+    # Метка пода оператора из Helm-чарта cloudnative-pg.
+    podLabels:
+      app.kubernetes.io/name: cloudnative-pg
+    port: 8000
+  # Часть матрицы, которая стандартом не описывается.
+  cilium:
+    enabled: true
+    # Как источник k6 доходит до api при externalTrafficPolicy: Cluster.
+    # host добавлен явно: при бэкенде на той же ноде kube-proxy маскарадит
+    # источник в адрес самой ноды. Cilium пускает host и без правила
+    # (allow-localhost), но тогда поток держался бы на настройке агента,
+    # а не на политике — зависимость неявная и в Части 6 даст ложный след.
+    externalEntities: [world, remote-node, host]
+    # Порт проверен фактом, а не рассуждением. Сервис kubernetes — это
+    # 10.43.0.1:443 -> targetPort 6443, и напрашивается вывод, что политика,
+    # срабатывающая на выходе из пода, увидит 443 (трансляцию делает
+    # kube-proxy в iptables хоста). Hubble показал обратное:
+    #   shop-db-1:57454 <> 172.18.0.3:6443 (kube-apiserver) EGRESS DENIED
+    # То есть к моменту проверки адрес уже транслирован в адрес ноды и
+    # целевой порт, а сущность kube-apiserver распознана. Правило пишется
+    # на 6443. Урок общий: место проверки политики в конвейере определяется
+    # замером в Hubble, а не выводом из схемы датаплейна.
+    apiServerPort: 6443

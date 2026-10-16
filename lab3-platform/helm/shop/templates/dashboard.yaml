@@ -16,4 +16,7 @@ metadata:
 data:
   shop-resources.json: |
 {{ .Files.Get "files/dashboard-resources.json" | indent 4 }}
+  # Дашборд пятой лабы: политики, дропы, DNS и состояние enforcement.
+  shop-network.json: |
+{{ .Files.Get "files/dashboard-network.json" | indent 4 }}
 {{- end }}

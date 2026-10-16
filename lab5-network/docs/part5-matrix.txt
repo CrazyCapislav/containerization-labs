@@ -1,0 +1,96 @@
+# Часть 5 — прогон матрицы доступа
+# 2026-10-16T13:10:46+00:00, кластер obs, политики ревизии 5
+
+== Из пробника client (легальный клиент) ==
+client -> api:8080                             ПРОШЛО    | Connection to shop-api (10.43.91.0) 8080 port [tcp/http-alt] succeeded!
+client -> worker:8081                          НЕ ПРОШЛО | command terminated with exit code 1
+client -> batch:8080                           НЕ ПРОШЛО | command terminated with exit code 1
+client -> postgres:5432                        НЕ ПРОШЛО | command terminated with exit code 1
+client -> DNS (nslookup)                       ПРОШЛО    | Address: 10.43.91.0
+client -> внешний мир                НЕ ПРОШЛО | command terminated with exit code 1
+
+== Из пробника intruder (посторонний) ==
+intruder -> api:8080                           НЕ ПРОШЛО | command terminated with exit code 1
+intruder -> worker:8081                        НЕ ПРОШЛО | command terminated with exit code 1
+intruder -> batch:8080                         НЕ ПРОШЛО | command terminated with exit code 1
+intruder -> postgres:5432                      НЕ ПРОШЛО | command terminated with exit code 1
+intruder -> DNS                                ПРОШЛО    | Address: 10.43.91.0
+intruder -> внешний мир              НЕ ПРОШЛО | command terminated with exit code 1
+
+== Обход через NodePort (гипотеза из матрицы) ==
+# intruder живёт на server-0 (172.18.0.2); своя нода даёт identity host,
+# чужая — remote-node. Оба перечислены в разрешении для входа снаружи.
+intruder -> 172.18.0.2:30006 (своя нода) НЕ ПРОШЛО | command terminated with exit code 1
+intruder -> 172.18.0.3:30006 (чужая нода) НЕ ПРОШЛО | command terminated with exit code 1
+intruder -> ClusterIP api:8080                 НЕ ПРОШЛО | command terminated with exit code 1
+
+== Исходящие потоки api, worker, batch ==
+--- shop-api-7d64648bcb-5bp2f (через эфемерный контейнер в его netns) ---
+api -> postgres:5432
+Connection to shop-db-rw (10.43.165.116) 5432 port [tcp/postgresql] succeeded!
+api -> worker:8081
+nc: connect to shop-worker (10.43.107.93) port 8081 (tcp) timed out: Operation in progress
+api -> batch:8080
+nc: connect to shop-batch (10.43.76.216) port 8080 (tcp) timed out: Operation in progress
+api -> внешний мир
+nc: connect to 1.1.1.1 port 443 (tcp) timed out: Operation in progress
+
+--- shop-worker-649f7dc54f-f2v6m (через эфемерный контейнер в его netns) ---
+worker -> postgres:5432
+Connection to shop-db-rw (10.43.165.116) 5432 port [tcp/postgresql] succeeded!
+worker -> api:8080
+nc: connect to shop-api (10.43.91.0) port 8080 (tcp) timed out: Operation in progress
+
+--- shop-batch-77766dbc65-dkh66 (через эфемерный контейнер в его netns) ---
+batch -> postgres:5432
+nc: getaddrinfo for host "shop-db-rw" port 5432: Try again
+batch -> DNS
+;; communications error to 10.43.0.10#53: timed out
+
+== Вердикты Hubble за время прогона ==
+# Источник правды о причине: таймаут мог быть и от отсутствия маршрута,
+# а Policy denied говорит, что пакет срезала именно политика.
+Oct 16 13:10:46.281: shop/client:60494 (ID:44246) <> shop/shop-worker-649f7dc54f-kksvc:8081 (ID:17925) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 13:10:46.281: shop/client:60494 (ID:44246) <> shop/shop-worker-649f7dc54f-kksvc:8081 (ID:17925) Policy denied DROPPED (TCP Flags: SYN)
+Oct 16 13:10:47.336: shop/client:60494 (ID:44246) <> shop/shop-worker-649f7dc54f-kksvc:8081 (ID:17925) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 13:10:47.336: shop/client:60494 (ID:44246) <> shop/shop-worker-649f7dc54f-kksvc:8081 (ID:17925) Policy denied DROPPED (TCP Flags: SYN)
+Oct 16 13:10:48.360: shop/client:60494 (ID:44246) <> shop/shop-worker-649f7dc54f-kksvc:8081 (ID:17925) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 13:10:48.360: shop/client:60494 (ID:44246) <> shop/shop-worker-649f7dc54f-kksvc:8081 (ID:17925) Policy denied DROPPED (TCP Flags: SYN)
+Oct 16 13:10:49.334: shop/client:48248 (ID:44246) <> shop/shop-batch-77766dbc65-dkh66:8080 (ID:21491) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 13:10:49.334: shop/client:48248 (ID:44246) <> shop/shop-batch-77766dbc65-dkh66:8080 (ID:21491) Policy denied DROPPED (TCP Flags: SYN)
+Oct 16 13:10:50.344: shop/client:48248 (ID:44246) <> shop/shop-batch-77766dbc65-dkh66:8080 (ID:21491) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 13:10:50.344: shop/client:48248 (ID:44246) <> shop/shop-batch-77766dbc65-dkh66:8080 (ID:21491) Policy denied DROPPED (TCP Flags: SYN)
+Oct 16 13:10:51.368: shop/client:48248 (ID:44246) <> shop/shop-batch-77766dbc65-dkh66:8080 (ID:21491) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 13:10:51.368: shop/client:48248 (ID:44246) <> shop/shop-batch-77766dbc65-dkh66:8080 (ID:21491) Policy denied DROPPED (TCP Flags: SYN)
+Oct 16 13:10:52.395: shop/client:46648 (ID:44246) <> shop/shop-db-1:5432 (ID:6270) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 13:10:52.395: shop/client:46648 (ID:44246) <> shop/shop-db-1:5432 (ID:6270) Policy denied DROPPED (TCP Flags: SYN)
+Oct 16 13:10:53.416: shop/client:46648 (ID:44246) <> shop/shop-db-1:5432 (ID:6270) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 13:10:53.416: shop/client:46648 (ID:44246) <> shop/shop-db-1:5432 (ID:6270) Policy denied DROPPED (TCP Flags: SYN)
+Oct 16 13:10:54.440: shop/client:46648 (ID:44246) <> shop/shop-db-1:5432 (ID:6270) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 13:10:54.440: shop/client:46648 (ID:44246) <> shop/shop-db-1:5432 (ID:6270) Policy denied DROPPED (TCP Flags: SYN)
+Oct 16 13:10:55.534: shop/client:56438 (ID:44246) <> 1.1.1.1:443 (world) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 13:10:55.534: shop/client:56438 (ID:44246) <> 1.1.1.1:443 (world) Policy denied DROPPED (TCP Flags: SYN)
+Oct 16 13:10:56.552: shop/client:56438 (ID:44246) <> 1.1.1.1:443 (world) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 13:10:56.552: shop/client:56438 (ID:44246) <> 1.1.1.1:443 (world) Policy denied DROPPED (TCP Flags: SYN)
+Oct 16 13:10:57.576: shop/client:56438 (ID:44246) <> 1.1.1.1:443 (world) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 13:10:57.576: shop/client:56438 (ID:44246) <> 1.1.1.1:443 (world) Policy denied DROPPED (TCP Flags: SYN)
+Oct 16 13:11:36.813: shop/shop-worker-649f7dc54f-f2v6m:33832 (ID:17925) <> shop/shop-api-7d64648bcb-jwc46:8080 (ID:15286) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 13:11:36.813: shop/shop-worker-649f7dc54f-f2v6m:33832 (ID:17925) <> shop/shop-api-7d64648bcb-jwc46:8080 (ID:15286) Policy denied DROPPED (TCP Flags: SYN)
+Oct 16 13:11:37.833: shop/shop-worker-649f7dc54f-f2v6m:33832 (ID:17925) <> shop/shop-api-7d64648bcb-jwc46:8080 (ID:15286) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 13:11:37.833: shop/shop-worker-649f7dc54f-f2v6m:33832 (ID:17925) <> shop/shop-api-7d64648bcb-jwc46:8080 (ID:15286) Policy denied DROPPED (TCP Flags: SYN)
+Oct 16 13:11:38.857: shop/shop-worker-649f7dc54f-f2v6m:33832 (ID:17925) <> shop/shop-api-7d64648bcb-jwc46:8080 (ID:15286) policy-verdict:none EGRESS DENIED (TCP Flags: SYN)
+Oct 16 13:11:38.857: shop/shop-worker-649f7dc54f-f2v6m:33832 (ID:17925) <> shop/shop-api-7d64648bcb-jwc46:8080 (ID:15286) Policy denied DROPPED (TCP Flags: SYN)
+
+== Состояние стенда после прогона ==
+client 1/1 Running
+intruder 1/1 Running
+shop-api-7d64648bcb-5bp2f 1/1 Running
+shop-api-7d64648bcb-jwc46 1/1 Running
+shop-api-7d64648bcb-kxg4w 1/1 Running
+shop-batch-77766dbc65-dkh66 1/1 Running
+shop-batch-77766dbc65-mcpwr 1/1 Running
+shop-batch-77766dbc65-q28qg 1/1 Running
+shop-db-1 1/1 Running
+shop-worker-649f7dc54f-f2v6m 1/1 Running
+shop-worker-649f7dc54f-kksvc 1/1 Running
+shop-db   2d1h   1     1     Cluster in healthy state   shop-db-1

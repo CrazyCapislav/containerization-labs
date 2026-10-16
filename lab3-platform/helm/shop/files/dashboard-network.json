@@ -1,0 +1,164 @@
+{
+  "title": "shop: сеть и политики",
+  "uid": "shop-network",
+  "tags": ["shop", "network", "cilium"],
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Отклонено политиками, пакетов/с",
+      "description": "Единственный прямой показатель того, что zero-trust работает. Ноль здесь означает либо что лишнего трафика нет, либо что политики не применяются — различать помогает панель с числом эндпоинтов под enforcement.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "pps", "custom": { "fillOpacity": 10, "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(hubble_drop_total{reason=\"POLICY_DENIED\"}[5m]))",
+          "legendFormat": "отклонено политикой",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Дропы по причинам",
+      "description": "Разделяет отказ политики и отказ датаплейна. POLICY_DENIED — решение правил; остальные причины (неподдерживаемый протокол, отсутствие маршрута) к политикам отношения не имеют и лечатся иначе.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "pps", "custom": { "fillOpacity": 10, "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (reason) (rate(hubble_drop_total[5m]))",
+          "legendFormat": "{{reason}}",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Эндпоинтов под политикой",
+      "description": "Сколько эндпоинтов имеют enforcement в обе стороны. Для shop с пробниками это 11. Падение числа означает, что default-deny перестал выбирать часть подов: сеть снова плоская, а дропов при этом нет — отсюда обманчивый ноль на первой панели.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 8, "w": 6, "h": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 11 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(cilium_policy_endpoint_enforcement_status{enforcement=\"both\"})",
+          "legendFormat": "оба направления",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Целей скрейпа shop живы",
+      "description": "Панель, выстраданная Шагом 6: политика может срезать скрейп метрик, и тогда приложение работает, матрица зелёная, а наблюдаемость отрезана. Ожидаемое значение — 8: три api, два worker, три batch.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 6, "y": 8, "w": 6, "h": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 8 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "count(up{namespace=\"shop\"} == 1)",
+          "legendFormat": "целей в up",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Ответы DNS по коду",
+      "description": "DNS — единственная зависимость, без которой api не находит базу по имени. NXDOMAIN здесь норма: резолвер перебирает домены поиска из resolv.conf. Тревожны SERVFAIL и REFUSED, а также обрыв NOERROR в ноль.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 6 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10, "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (rcode) (rate(coredns_dns_responses_total[5m]))",
+          "legendFormat": "{{rcode}}",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Потоки через датаплейн по вердикту",
+      "description": "Фон, на котором читаются остальные панели: сколько потоков вообще обработано и какая доля из них пропущена. Позволяет отличить «дропов нет, потому что всё разрешено» от «дропов нет, потому что трафика нет».",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "pps", "custom": { "fillOpacity": 10, "lineWidth": 2 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (verdict) (rate(hubble_flows_processed_total[5m]))",
+          "legendFormat": "{{verdict}}",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "editorMode": "code"
+        }
+      ]
+    }
+  ]
+}

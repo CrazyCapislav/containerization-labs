@@ -140,4 +140,64 @@ spec:
             description: "SLA критического пути нарушен пять минут подряд."
             impact: "Клиенты ждут оформления заказа заметно дольше обещанного."
             action: "Сверить с ShopCriticalPathThrottled и ShopCriticalPodPending. Если оба молчат, причина вне ресурсов: смотреть базу и внешние зависимости."
+{{- if .Values.monitoring.network.enabled }}
+    # Сетевые алерты (Часть 7 лабы 5). Все три опираются на метрики Cilium,
+    # Hubble и CoreDNS: собственные метрики приложения о сетевых запретах
+    # ничего не знают — для сервиса отказ политики неотличим от таймаута.
+    - name: shop.network
+      rules:
+        # 1. Всплеск отклонённого политиками трафика.
+        # Одно правило ловит две противоположные ситуации: либо кто-то ломится
+        # туда, куда не должен, либо сломана политика и режется легальный
+        # трафик. Для дежурного оба случая означают одно — сеть ведёт себя не
+        # как вчера, и надо смотреть Hubble. Порог вынесен в значения, потому
+        # что фоновый уровень зависит от стенда: сканеры, пробники, зонды.
+        - alert: ShopPolicyDeniedSpike
+          expr: sum(rate(hubble_drop_total{reason="POLICY_DENIED"}[5m])) > {{ .Values.monitoring.network.policyDeniedPerSec }}
+          for: 5m
+          labels:
+            severity: warning
+            service: shop
+          annotations:
+            summary: "Сетевые политики режут трафик выше фонового уровня"
+            description: "Больше {{ .Values.monitoring.network.policyDeniedPerSec }} пакетов в секунду отклонено с причиной POLICY_DENIED пять минут подряд."
+            impact: "Либо запрещённый источник настойчиво стучится в shop, либо политика блокирует то, что должна пропускать."
+            action: "hubble observe --verdict DROPPED --namespace shop покажет пару источник-получатель и порт. Дальше сравнить метки источника, которые видит датаплейн, с селектором правила."
+
+        # 2. Цели скрейпа shop недоступны.
+        # Алерт, выстраданный Шагом 6: политика срезала скрейп метрик, и это
+        # не заметили ни матрица доступа, ни нагрузочный прогон, ни пробы
+        # kubelet. Приложение работало, наблюдаемость была отрезана. Этот
+        # сигнал ловит класс отказов, при которых всё выглядит здоровым
+        # именно потому, что смотреть стало нечем.
+        - alert: ShopScrapeTargetsDown
+          expr: count(up{namespace="shop"} == 0) > 0
+          for: 3m
+          labels:
+            severity: critical
+            service: shop
+          annotations:
+            summary: "Prometheus не может собрать метрики с подов shop"
+            description: "{{ `{{ $value }}` }} целей в namespace shop недоступны для скрейпа три минуты подряд."
+            impact: "Слепая зона: дашборды и остальные алерты перестают отражать реальность, хотя сервис может работать нормально."
+            action: "Проверить сетевую политику сбора метрик: селектор источника должен совпадать с метками подов Prometheus. kubectl -n monitoring get pods -l app.kubernetes.io/name=prometheus --show-labels."
+
+        # 3. DNS отвечает ошибками.
+        # Без DNS api не находит базу по имени, и отказ маскируется под
+        # «база недоступна»: в Шаге 5 это видно на batch, где запрет DNS
+        # проявился как getaddrinfo Try again, а не как отказ соединения.
+        # NXDOMAIN здесь намеренно не учитывается: резолвер перебирает домены
+        # поиска из resolv.conf, и такие ответы — штатный фон.
+        - alert: ClusterDNSFailing
+          expr: sum(rate(coredns_dns_responses_total{rcode=~"SERVFAIL|REFUSED"}[5m])) > 0
+          for: 3m
+          labels:
+            severity: critical
+            service: shop
+          annotations:
+            summary: "CoreDNS отвечает ошибками SERVFAIL или REFUSED"
+            description: "Доля ошибочных ответов DNS держится выше нуля три минуты подряд."
+            impact: "Сервисы перестают находить друг друга по именам. Симптом выглядит как недоступность базы, хотя база жива."
+            action: "Проверить поды CoreDNS в kube-system и разрешение egress на порт 53 у подов, которым DNS нужен: в политике это список networkPolicy.dns.clients."
+{{- end }}
 {{- end }}
