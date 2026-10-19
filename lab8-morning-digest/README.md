@@ -769,20 +769,20 @@ for: 10m
 
 Числа прогонов за работу: 47 всего, из них 27 успешных, 18 с ошибкой и 2 отменённых. Отказы здесь не фон, а материал: каждый разобран выше, и почти все они до определённого момента выглядели успехами.
 
-Что лежит в папке:
+## Что лежит в репозитории
 
 | Файл | Что это |
 |---|---|
-| `workflow/kvart-release-digest.json` | Итоговый воркфлоу, 27 узлов |
-| `workflow/stage1-сбор-без-ai.json` | Промежуточная версия: только сбор данных, без AI |
-| `workflow/stage2-агент.json` | Промежуточная версия: первый агент |
-| `skills.md` | Toolkit и know-how агентов |
-| `stand/compose.yaml` | n8n и два MCP-сервера |
-| `stand/mcp-filesystem/Dockerfile` | Прослойка supergateway над stdio-сервером |
-| `stand/mcp-probe.js` | Проверка MCP-серверов по протоколу, а не по открытому порту |
-| `stand/workspace/release/` | Чек-лист выкатки и шаблон release notes |
-| `monitoring/` | ServiceMonitor, Endpoints и дашборд |
-| `docs/img/` | Скриншоты мониторинга |
+| [`workflow/kvart-release-digest.json`](workflow/kvart-release-digest.json) | Итоговый воркфлоу, 27 узлов |
+| [`workflow/stage1-сбор-без-ai.json`](workflow/stage1-сбор-без-ai.json) | Промежуточная версия: только сбор данных, без AI |
+| [`workflow/stage2-агент.json`](workflow/stage2-агент.json) | Промежуточная версия: первый агент |
+| [`skills.md`](skills.md) | Toolkit и know-how агентов |
+| [`stand/compose.yaml`](stand/compose.yaml) | n8n и два MCP-сервера |
+| [`stand/mcp-filesystem/Dockerfile`](stand/mcp-filesystem/Dockerfile) | Прослойка supergateway над stdio-сервером |
+| [`stand/mcp-probe.js`](stand/mcp-probe.js) | Проверка MCP-серверов по протоколу, а не по открытому порту |
+| [`stand/workspace/release/`](stand/workspace/release/) | Чек-лист выкатки и шаблон release notes |
+| [`monitoring/`](monitoring/) | ServiceMonitor, Endpoints и дашборд |
+| [`docs/img/`](docs/img/) | Скриншоты мониторинга |
 
 ---
 
