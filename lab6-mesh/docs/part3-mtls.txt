@@ -1,0 +1,16 @@
+# Часть 3 — доказательство mTLS, 2026-10-16T20:18:56+00:00
+
+== Сертификат прокси api: идентичность привязана к сервисному аккаунту ==
+        Issuer: CN=identity.linkerd.
+        Subject: CN=default.shop.serviceaccount.identity.linkerd.cluster.local
+                DNS:default.shop.serviceaccount.identity.linkerd.cluster.local
+
+== Входящие соединения прокси api: мешенный источник против немешенного ==
+tls="no_identity" no_tls_reason="no_tls_from_remote" 
+57 tls="no_identity" no_tls_reason="no_tls_from_remote" 
+278 tls="true" client_id="default.shop.serviceaccount.identity.linkerd.cluster.local" 
+8 tls="no_identity" no_tls_reason="no_tls_from_remote" 
+62 tls="no_identity" no_tls_reason="no_tls_from_remote" 
+275 tls="true" client_id="default.shop.serviceaccount.identity.linkerd.cluster.local" 
+11 tls="no_identity" no_tls_reason="no_tls_from_remote" 
+56 tls="true" client_id="default.shop.serviceaccount.identity.linkerd.cluster.local" 

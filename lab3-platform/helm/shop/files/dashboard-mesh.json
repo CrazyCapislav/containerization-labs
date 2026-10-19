@@ -1,0 +1,94 @@
+{
+  "title": "shop: mesh и канареечный релиз",
+  "uid": "shop-mesh",
+  "tags": ["shop", "mesh", "linkerd", "canary"],
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Разделение трафика по версиям, запросов/с",
+      "description": "Фактическое деление, а не заданные веса. Гейт двигает веса в HTTPRoute, но проверять надо результат: решение принимает прокси отправителя, и трафик снаружи меша весам не подчиняется.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 20, "lineWidth": 2, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (version) (rate(http_requests_total{namespace=\"shop\",path=\"/order\"}[2m]))",
+          "legendFormat": "{{version}}",
+          "refId": "A", "range": true, "instant": false, "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Доля ошибок по версиям",
+      "description": "То, по чему гейт принимает решение об откате. Порог алерта и порог гейта совпадают намеренно: иначе человек и автопилот будут судить по-разному об одних данных.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "custom": { "fillOpacity": 10, "lineWidth": 2 }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 0.05 } ] } }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (version) (rate(http_requests_total{namespace=\"shop\",path=\"/order\",status=~\"5..\"}[2m])) / clamp_min(sum by (version) (rate(http_requests_total{namespace=\"shop\",path=\"/order\"}[2m])), 0.001)",
+          "legendFormat": "{{version}}",
+          "refId": "A", "range": true, "instant": false, "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Повторы силами меша",
+      "description": "Разрыв между этой панелью и ошибками клиента и есть «надёжность бесплатно»: прокси повторяет неудачные запросы, и до клиента отказ не доходит. Рост повторов — ранний признак деградации бэкенда, невидимый по клиентским метрикам.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 7 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(outbound_http_route_retry_requests_total{parent_namespace=\"shop\"}[5m]))",
+          "legendFormat": "повторов отправлено", "refId": "A", "range": true, "instant": false, "editorMode": "code"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(outbound_http_route_retry_successes_total{parent_namespace=\"shop\"}[5m]))",
+          "legendFormat": "из них успешных", "refId": "B", "range": true, "instant": false, "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Входящие соединения: с идентичностью и без",
+      "description": "Прямая проверка обещания mTLS. Трафик с tls=true приходит из меша и аутентифицирован сертификатом сервисного аккаунта; no_identity — это вход снаружи меша, он не шифруется.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 7 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 20, "lineWidth": 2, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (tls) (rate(request_total{direction=\"inbound\",namespace=\"shop\"}[5m]))",
+          "legendFormat": "{{tls}}", "refId": "A", "range": true, "instant": false, "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Цена меша: процессор по контейнерам пода api",
+      "description": "Прокси стоит ресурсов, и считать надо оба контейнера. На замере из Части 8 прокси съедал больше, чем само приложение.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 15, "w": 24, "h": 7 },
+      "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (container) (rate(container_cpu_usage_seconds_total{namespace=\"shop\",pod=~\"shop-api-.*\",container!=\"\"}[5m]))",
+          "legendFormat": "{{container}}", "refId": "A", "range": true, "instant": false, "editorMode": "code"
+        }
+      ]
+    }
+  ]
+}

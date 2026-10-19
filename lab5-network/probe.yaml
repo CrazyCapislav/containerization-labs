@@ -23,6 +23,13 @@ kind: Pod
 metadata:
   name: client
   namespace: shop
+  annotations:
+    # Лаба 6: client введён в mesh, чтобы доказать mTLS. Шифрование и
+    # идентичность возникают только между двумя мешенными подами — на
+    # связи с немешенным прокси покажет no_identity. intruder намеренно
+    # оставлен вне меша: его трафик даёт контрольное сравнение.
+    linkerd.io/inject: enabled
+    config.linkerd.io/proxy-enable-native-sidecar: "true"
   labels:
     app.kubernetes.io/name: client
     app.kubernetes.io/part-of: shop

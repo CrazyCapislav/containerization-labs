@@ -1,0 +1,100 @@
+{{- /*
+Мониторинг меша (Часть 9 лабы 6).
+
+PodMonitor, а не ServiceMonitor: прокси живёт контейнером внутри подов
+приложения и собственного сервиса не имеет. Метрики берутся с его
+административного порта.
+
+Алерты опираются на метрики меша, а не приложения, и это принципиально:
+приложение не знает ни о повторах, ни о шифровании, ни о том, с какой
+идентичностью к нему пришли. Эти три вопроса видит только прокси.
+*/ -}}
+{{- if and .Values.api.mesh.enabled .Values.monitoring.meshPodMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ .Release.Name }}-mesh
+  labels:
+    {{- include "shop.labels" (dict "name" "shop" "partOf" .Values.partOf "release" .Release.Name) | nindent 4 }}
+spec:
+  # Селектор по part-of, а не по name=api: повторы считает прокси
+  # ОТПРАВИТЕЛЯ, то есть пробника client, и при выборке только по api
+  # метрики повторов не собирались бы вовсе. Поды без прокси под этот
+  # селектор тоже попадают, но у них нет порта linkerd-admin, и они
+  # молча пропускаются.
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: {{ .Values.partOf }}
+  podMetricsEndpoints:
+    - port: linkerd-admin
+      path: /metrics
+      interval: {{ .Values.monitoring.meshPodMonitor.interval }}
+{{- end }}
+{{- if and .Values.api.mesh.enabled .Values.monitoring.mesh.enabled .Values.monitoring.prometheusRule.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-mesh
+  labels:
+    {{- include "shop.labels" (dict "name" "shop" "partOf" .Values.partOf "release" .Release.Name) | nindent 4 }}
+spec:
+  groups:
+    - name: shop.mesh
+      rules:
+        # 1. Версия отдаёт ошибки выше порога.
+        # Порог совпадает с порогом гейта из Части 6 намеренно: автопилот
+        # и дежурный должны судить по одному правилу. Разъедутся пороги —
+        # разъедутся и решения, причём по одним и тем же данным.
+        - alert: ShopCanaryErrorRate
+          expr: |
+            sum by (version) (rate(http_requests_total{namespace="shop",path="/order",status=~"5.."}[2m]))
+            /
+            clamp_min(sum by (version) (rate(http_requests_total{namespace="shop",path="/order"}[2m])), 0.001)
+            > {{ .Values.monitoring.mesh.errorRate }}
+          for: 2m
+          labels:
+            severity: critical
+            service: shop
+          annotations:
+            summary: "Версия {{ `{{ $labels.version }}` }} отдаёт ошибки выше порога"
+            description: "Доля ответов 5xx на пути заказа держится выше {{ .Values.monitoring.mesh.errorRate }} две минуты подряд."
+            impact: "Если это канарейка — релиз нездоров. Если стабильная версия — деградация затрагивает всех."
+            action: "Сверить с логом гейта: он должен был откатить релиз сам. Если не откатил, проверить, идёт ли через него трафик и видит ли он метрики."
+
+        # 2. Повторы растут.
+        # Самый ценный из трёх: повторы прячут отказы бэкенда от клиента,
+        # поэтому по клиентским метрикам деградация не видна вовсе. Этот
+        # алерт ловит её до того, как бюджет повторов будет исчерпан.
+        - alert: ShopMeshRetryRateHigh
+          expr: |
+            sum(rate(outbound_http_route_retry_requests_total{parent_namespace="shop"}[5m]))
+            /
+            clamp_min(sum(rate(outbound_http_route_request_statuses_total{parent_namespace="shop"}[5m])), 0.001)
+            > {{ .Values.monitoring.mesh.retryRate }}
+          for: 5m
+          labels:
+            severity: warning
+            service: shop
+          annotations:
+            summary: "Меш повторяет заметную долю запросов к shop"
+            description: "Доля повторов держится выше {{ .Values.monitoring.mesh.retryRate }} пять минут подряд."
+            impact: "Клиент пока не видит ошибок, но бэкенд нездоров, и запас прочности расходуется. При исчерпании бюджета повторов отказы станут видны сразу и все."
+            action: "Смотреть долю 5xx у бэкенда по метрикам приложения: повторы маскируют её от клиента, но не от сервера."
+
+        # 3. К мешенному сервису приходят без идентичности.
+        # Ловит две разные ситуации одним правилом: либо кто-то обращается
+        # в обход меша, либо под потерял инжекцию после пересоздания.
+        - alert: ShopMeshTrafficWithoutIdentity
+          expr: |
+            sum(rate(request_total{direction="inbound",target_port="{{ .Values.api.service.port }}",tls="no_identity"}[5m])) > 0
+          for: 10m
+          labels:
+            severity: warning
+            service: shop
+          annotations:
+            summary: "В shop идёт трафик без подтверждённой идентичности"
+            description: "Входящие соединения с tls=no_identity держатся выше нуля десять минут."
+            impact: "Часть трафика не шифруется и не аутентифицируется, то есть обещание mTLS выполняется не для всех."
+            action: "Нормально, если это вход снаружи через NodePort. Ненормально, если источник внутри кластера: проверить аннотацию инжекции у подов-источников."
+{{- end }}

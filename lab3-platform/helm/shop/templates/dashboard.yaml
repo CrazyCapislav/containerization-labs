@@ -19,4 +19,9 @@ data:
   # Дашборд пятой лабы: политики, дропы, DNS и состояние enforcement.
   shop-network.json: |
 {{ .Files.Get "files/dashboard-network.json" | indent 4 }}
+  {{- if .Values.api.mesh.enabled }}
+  # Дашборд шестой лабы: версии, повторы, идентичность и цена прокси.
+  shop-mesh.json: |
+{{ .Files.Get "files/dashboard-mesh.json" | indent 4 }}
+  {{- end }}
 {{- end }}

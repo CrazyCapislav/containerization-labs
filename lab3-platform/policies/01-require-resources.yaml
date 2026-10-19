@@ -22,7 +22,7 @@ spec:
       exclude:
         any:
           - resources:
-              namespaces: [kube-system, kube-public, kube-node-lease, kyverno, monitoring, demo, cnpg-system]
+              namespaces: [kube-system, kube-public, kube-node-lease, kyverno, monitoring, demo, cnpg-system, linkerd, linkerd-cni]
       validate:
         failureAction: Enforce
         message: >-

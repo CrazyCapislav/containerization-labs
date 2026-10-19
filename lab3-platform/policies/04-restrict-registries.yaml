@@ -21,7 +21,7 @@ spec:
       exclude:
         any:
           - resources:
-              namespaces: [kube-system, kube-public, kube-node-lease, kyverno, monitoring, demo, cnpg-system]
+              namespaces: [kube-system, kube-public, kube-node-lease, kyverno, monitoring, demo, cnpg-system, linkerd, linkerd-cni]
       validate:
         failureAction: Enforce
         message: >-
@@ -29,6 +29,6 @@ spec:
         pattern:
           spec:
             =(initContainers):
-              - image: "shop-* | ghcr.io/* | quay.io/* | registry.k8s.io/*"
+              - image: "shop-* | ghcr.io/* | quay.io/* | registry.k8s.io/* | cr.l5d.io/*"
             containers:
-              - image: "shop-* | ghcr.io/* | quay.io/* | registry.k8s.io/*"
+              - image: "shop-* | ghcr.io/* | quay.io/* | registry.k8s.io/* | cr.l5d.io/*"

@@ -1,0 +1,45 @@
+Замер «baseline», 2026-10-16T19:53:51+00:00, нагрузка 3 мин
+  █ THRESHOLDS 
+
+    http_req_duration{path:order}
+    ✓ 'p(95)<300' p(95)=52.33ms
+
+    http_req_failed{path:order}
+    ✓ 'rate==0' rate=0.00%
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 3600    19.99989/s
+    checks_succeeded...: 100.00% 3600 out of 3600
+    checks_failed......: 0.00%   0 out of 3600
+
+    ✓ заказ создан (201)
+
+    HTTP
+    http_req_duration..............: avg=23.34ms min=493.71µs med=20.47ms max=272.75ms p(90)=31.89ms p(95)=48.25ms
+      { expected_response:true }...: avg=23.34ms min=493.71µs med=20.47ms max=272.75ms p(90)=31.89ms p(95)=48.25ms
+      { path:order }...............: avg=25.6ms  min=12.01ms  med=20.66ms max=272.75ms p(90)=36.16ms p(95)=52.33ms
+    http_req_failed................: 0.00%  0 out of 3960
+      { path:order }...............: 0.00%  0 out of 3600
+    http_reqs......................: 3960   21.999879/s
+
+    EXECUTION
+
+== Потребление подов api за окно нагрузки (181с) ==
+# Разбивка по контейнерам: с мешем в поде появляется второй, и честная
+# цена складывается из обоих, а не только из приложения.
+
+CPU, ядер в среднем за окно (контейнер / значение):
+api	0.008229846576420738
+
+Память, байт (максимум рабочего набора за окно):
+api	24121344
+
+Задержка p95 по серверной гистограмме, секунд:
+все	0.05529124964244922
+
+== Состав подов api ==
+shop-api-6459cc9fcb-9lhqj  контейнеров: api 
+shop-api-6459cc9fcb-bbjls  контейнеров: api 
+shop-api-6459cc9fcb-m4drn  контейнеров: api 

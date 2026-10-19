@@ -59,6 +59,75 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+{{- if $np.mesh.enabled }}
+---
+# 2б. Прокси меша к control plane. Отдельным правилом, а не строкой в
+# потоках: на другой стороне не под shop, а чужой namespace, и порты там
+# служебные. Симптом отсутствия этого правила обманчив — под не падает,
+# а зависает неготовым, потому что прокси не может получить сертификат.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $rel }}-mesh-egress-to-control-plane
+  labels:
+    {{- include "shop.labels" (dict "name" "network-policy" "partOf" $partOf "release" $rel) | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [{{ join ", " $np.mesh.clients }}]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.mesh.namespace }}
+      ports:
+        {{- range $np.mesh.ports }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}
+{{- if $np.mesh.enabled }}
+---
+# 2в. Трафик между мешенными подами. Нужен отдельной парой, потому что на
+# проводе он идёт на порт входящего прокси, а не на порт приложения:
+# правила из flows, написанные по портам сервисов, его не покрывают.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $rel }}-mesh-proxy-to-proxy
+  labels:
+    {{- include "shop.labels" (dict "name" "network-policy" "partOf" $partOf "release" $rel) | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [{{ join ", " $np.mesh.clients }}]
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [{{ join ", " $np.mesh.clients }}]
+      ports:
+        - protocol: TCP
+          port: {{ $np.mesh.proxyInboundPort }}
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [{{ join ", " $np.mesh.clients }}]
+      ports:
+        - protocol: TCP
+          port: {{ $np.mesh.proxyInboundPort }}
+{{- end }}
 {{- range $np.flows }}
 ---
 # 3. Поток {{ .from }} → {{ .to }}:{{ .port }}, половина источника.
@@ -133,6 +202,11 @@ spec:
       ports:
         - protocol: TCP
           port: http
+        {{- if $np.mesh.enabled }}
+        # Метрики прокси меша: отдельный порт, тот же источник.
+        - protocol: TCP
+          port: {{ $np.mesh.proxyAdminPort }}
+        {{- end }}
 ---
 # 5. Оператор CloudNativePG опрашивает instance manager в поде базы.
 # Без этого потока база работает, но оператор теряет её статус.

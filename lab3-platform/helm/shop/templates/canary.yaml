@@ -1,0 +1,144 @@
+{{- /*
+Канареечный релиз (Части 5-7 лабы 6).
+
+Здесь три объекта: вторая версия api, по сервису на каждую версию и
+HTTPRoute, который делит трафик между ними весами.
+
+Почему HTTPRoute, а не самодельный объект меша: современный Linkerd
+управляет трафиком через стандартный Gateway API, тот же интерфейс
+понимают и другие реализации. Веса задаются значениями, потому что их
+меняет гейт из Части 6 — константа в шаблоне сделала бы автопилот
+невозможным.
+
+Важное ограничение, которое надо держать в голове при проверке: решение
+о маршруте принимает прокси ОТПРАВИТЕЛЯ. Трафик снаружи меша (через
+NodePort) в HTTPRoute не попадает и делится обычным балансировщиком
+сервиса. Поэтому разделение проверяется изнутри меша.
+*/ -}}
+{{- if and .Values.api.mesh.enabled .Values.api.canary.enabled }}
+{{- $rel := .Release.Name }}
+{{- $partOf := .Values.partOf }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $rel }}-api-{{ .Values.api.canary.version }}
+  labels:
+    {{- include "shop.labels" (dict "name" "api" "partOf" $partOf "release" $rel) | nindent 4 }}
+    app.kubernetes.io/version: {{ .Values.api.canary.version | quote }}
+spec:
+  replicas: {{ .Values.api.canary.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "shop.selectorLabels" (dict "name" "api" "release" $rel) | nindent 6 }}
+      app.kubernetes.io/version: {{ .Values.api.canary.version | quote }}
+  template:
+    metadata:
+      labels:
+        {{- include "shop.labels" (dict "name" "api" "partOf" $partOf "release" $rel) | nindent 8 }}
+        app.kubernetes.io/version: {{ .Values.api.canary.version | quote }}
+      annotations:
+        linkerd.io/inject: enabled
+        {{- if .Values.api.mesh.nativeSidecar }}
+        config.linkerd.io/proxy-enable-native-sidecar: "true"
+        {{- end }}
+        config.linkerd.io/proxy-cpu-request: {{ .Values.api.mesh.proxy.cpuRequest | quote }}
+        config.linkerd.io/proxy-memory-request: {{ .Values.api.mesh.proxy.memoryRequest | quote }}
+        config.linkerd.io/proxy-cpu-limit: {{ .Values.api.mesh.proxy.cpuLimit | quote }}
+        config.linkerd.io/proxy-memory-limit: {{ .Values.api.mesh.proxy.memoryLimit | quote }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.api.terminationGracePeriodSeconds }}
+      {{- if .Values.api.priorityClassName }}
+      priorityClassName: {{ .Values.api.priorityClassName }}
+      {{- end }}
+      containers:
+        - name: api
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.service.port }}
+          env:
+            - name: ADDR
+              value: ":{{ .Values.api.service.port }}"
+            - name: APP_VERSION
+              value: {{ .Values.api.canary.version | quote }}
+            - name: HEALTH_FAIL
+              value: "false"
+            - name: FAIL
+              value: {{ .Values.api.canary.fail | quote }}
+            - name: FLAKY
+              value: {{ .Values.api.canary.flaky.enabled | quote }}
+            - name: FLAKY_PERCENT
+              value: {{ .Values.api.canary.flaky.percent | quote }}
+            - name: SHUTDOWN_DELAY_SECONDS
+              value: {{ .Values.api.shutdownDelaySeconds | quote }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.secretName }}
+                  key: {{ .Values.database.secretKey }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+---
+{{- range $v := list .Values.api.version .Values.api.canary.version }}
+# Сервис на версию: HTTPRoute делит трафик между бэкендами, а бэкенд
+# в Gateway API — это сервис, а не набор подов.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $rel }}-api-{{ $v }}
+  labels:
+    {{- include "shop.labels" (dict "name" "api" "partOf" $partOf "release" $rel) | nindent 4 }}
+spec:
+  selector:
+    {{- include "shop.selectorLabels" (dict "name" "api" "release" $rel) | nindent 4 }}
+    app.kubernetes.io/version: {{ $v | quote }}
+  ports:
+    - name: http
+      port: {{ $.Values.api.service.port }}
+      targetPort: http
+---
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $rel }}-api-split
+  labels:
+    {{- include "shop.labels" (dict "name" "api" "partOf" $partOf "release" $rel) | nindent 4 }}
+spec:
+  parentRefs:
+    - group: core
+      kind: Service
+      name: {{ $rel }}-api
+      port: {{ .Values.api.service.port }}
+  rules:
+    - backendRefs:
+        - group: core
+          kind: Service
+          name: {{ $rel }}-api-{{ .Values.api.version }}
+          port: {{ .Values.api.service.port }}
+          weight: {{ .Values.api.canary.weight.stable }}
+        - group: core
+          kind: Service
+          name: {{ $rel }}-api-{{ .Values.api.canary.version }}
+          port: {{ .Values.api.service.port }}
+          weight: {{ .Values.api.canary.weight.canary }}
+{{- end }}

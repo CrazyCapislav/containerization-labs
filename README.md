@@ -9,6 +9,7 @@
 | [lab3-platform](lab3-platform/) | Платформа: политики, Helm, оператор БД, отказ control plane | готово |
 | [lab4-scheduling](lab4-scheduling/) | Планирование и ресурсы: разнесение, QoS, вытеснение, выселение, SLA | готово |
 | [lab5-network](lab5-network/) | Сеть: Cilium, непрерывность под хаосом подов, zero-trust и слепая диагностика | готово |
+| [lab6-mesh](lab6-mesh/) | Service mesh: mTLS, надёжность повторами, канареечный релиз с автопилотом, цена меша | готово |
 | [lab8-morning-digest](lab8-morning-digest/) | AI-инфраструктура: n8n, MCP-серверы, агент и сводка по релизу | готово |
 
 Отдельно `monitoring/` — локальный стек Prometheus + Grafana на compose, им снимались метрики контейнера в первой лабе.

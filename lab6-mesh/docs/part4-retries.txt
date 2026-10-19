@@ -1,0 +1,24 @@
+# Часть 4 — надёжность силами меша, 2026-10-16T23:14:12+00:00
+
+Отказы генерирует само приложение: FLAKY=true, FLAKY_PERCENT=20,
+отказ происходит ДО обращения к базе. Нагрузка идёт изнутри меша,
+от пробника client: повторы делает прокси ОТПРАВИТЕЛЯ, и снаружи
+меша (через NodePort) их просто некому выполнить.
+
+== Замер 1: повторы выключены ==
+клиент: успешно=156 отказов=44 доля=22%
+бэкенд (метрика приложения, 5 мин): 45 ответов 5xx
+
+== Замер 2: повторы включены (retry.linkerd.io/http=5xx, limit=3, timeout=2s) ==
+клиент: успешно=200 отказов=0 доля=0%
+бэкенд за то же окно:
+  ответов 5xx: 75.43480681818181
+  ответов 201: 388.00903636363637
+
+== Какой механизм сработал: повторы, не circuit breaking ==
+outbound_http_route_retry_limit_exceeded_total{parent_group="core",parent_kind="Service",parent_namespace="shop",parent_name="shop-api",parent_port="8080",parent_section_name="",route_group="",route_kind="default",route_namespace="",route_name="http",hostname=""} 0
+outbound_http_route_retry_overflow_total{parent_group="core",parent_kind="Service",parent_namespace="shop",parent_name="shop-api",parent_port="8080",parent_section_name="",route_group="",route_kind="default",route_namespace="",route_name="http",hostname=""} 0
+outbound_http_route_retry_requests_total{parent_group="core",parent_kind="Service",parent_namespace="shop",parent_name="shop-api",parent_port="8080",parent_section_name="",route_group="",route_kind="default",route_namespace="",route_name="http",hostname=""} 34
+outbound_http_route_retry_successes_total{parent_group="core",parent_kind="Service",parent_namespace="shop",parent_name="shop-api",parent_port="8080",parent_section_name="",route_group="",route_kind="default",route_namespace="",route_name="http",hostname=""} 29
+# retry_overflow = 0 означает, что ни один повтор не был заблокирован
+# размыкателем: circuit breaking не включался и в результат не вмешивался.

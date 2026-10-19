@@ -20,6 +20,24 @@ spec:
     metadata:
       labels:
         {{- include "shop.labels" (dict "name" "api" "partOf" .Values.partOf "release" .Release.Name) | nindent 8 }}
+        # Метка версии добавлена в шаблон пода, а не в селектор Deployment:
+        # селектор неизменяем после создания, и его правка потребовала бы
+        # пересоздания релиза.
+        app.kubernetes.io/version: {{ .Values.api.version | quote }}
+      {{- if .Values.api.mesh.enabled }}
+      annotations:
+        # Инжекция прокси включается на уровне пода, а не namespace:
+        # mesh нужен только вокруг api, остальные сервисы shop остаются
+        # вне его, и цена меша в Части 8 считается за один сервис.
+        linkerd.io/inject: enabled
+        {{- if .Values.api.mesh.nativeSidecar }}
+        config.linkerd.io/proxy-enable-native-sidecar: "true"
+        {{- end }}
+        config.linkerd.io/proxy-cpu-request: {{ .Values.api.mesh.proxy.cpuRequest | quote }}
+        config.linkerd.io/proxy-memory-request: {{ .Values.api.mesh.proxy.memoryRequest | quote }}
+        config.linkerd.io/proxy-cpu-limit: {{ .Values.api.mesh.proxy.cpuLimit | quote }}
+        config.linkerd.io/proxy-memory-limit: {{ .Values.api.mesh.proxy.memoryLimit | quote }}
+      {{- end }}
     spec:
       terminationGracePeriodSeconds: {{ .Values.api.terminationGracePeriodSeconds }}
       {{- if .Values.api.priorityClassName }}
@@ -47,6 +65,12 @@ spec:
               value: {{ .Values.api.version | quote }}
             - name: HEALTH_FAIL
               value: {{ .Values.api.healthFail | quote }}
+            - name: FLAKY
+              value: {{ .Values.api.flaky.enabled | quote }}
+            - name: FLAKY_PERCENT
+              value: {{ .Values.api.flaky.percent | quote }}
+            - name: FAIL
+              value: {{ .Values.api.fail | quote }}
             - name: SHUTDOWN_DELAY_SECONDS
               value: {{ .Values.api.shutdownDelaySeconds | quote }}
             - name: POD_NAME
@@ -88,6 +112,14 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ .Release.Name }}-api
+  {{- if and .Values.api.mesh.enabled .Values.api.retry.enabled }}
+  annotations:
+    # Повторы настраиваются на СЕРВИСЕ, а не на поде: решение принимает
+    # прокси отправителя, и ему нужно знать политику назначения.
+    retry.linkerd.io/http: {{ .Values.api.retry.condition | quote }}
+    retry.linkerd.io/limit: {{ .Values.api.retry.limit | quote }}
+    retry.linkerd.io/timeout: {{ .Values.api.retry.timeout | quote }}
+  {{- end }}
   labels:
     {{- include "shop.labels" (dict "name" "api" "partOf" .Values.partOf "release" .Release.Name) | nindent 4 }}
 spec:

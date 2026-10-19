@@ -1,9 +1,20 @@
 // api — HTTP-сервис магазина shop.
 //
 //	GET  /health   отдаёт ok; при HEALTH_FAIL=true отвечает 503
+//	GET  /version  отдаёт APP_VERSION: по нему проверяется разделение трафика
 //	POST /order    создаёт заказ в postgres
 //	GET  /orders   отдаёт список заказов
 //	GET  /metrics  метрики Prometheus
+//
+// Два переключателя для лабы 6, оба влияют только на POST /order:
+//
+//	FAIL=true           заказ всегда отвечает 500 — сломанная версия для отката
+//	FLAKY=true          заказ падает с вероятностью FLAKY_PERCENT (по умолчанию 20)
+//
+// Намеренно ни один из них не трогает /health. Сломанная версия обязана
+// оставаться Ready: иначе её выведет из балансировки kubelet, канарейка
+// перестанет получать трафик, и откат сделает Kubernetes вместо гейта —
+// то есть эксперимент проверит не то, что задуман проверять.
 //
 // Готовность намеренно не зависит от базы: иначе недоступность postgres
 // вывела бы из балансировки все поды разом, а выкатка повисла бы навсегда.
@@ -14,6 +25,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"os/signal"
@@ -28,17 +40,29 @@ import (
 	"lab/shop/internal/store"
 )
 
+// appVersion читается один раз: метка метрик должна быть постоянной,
+// иначе серия разрывается при каждом запросе.
+var appVersion = func() string {
+	if v := os.Getenv("APP_VERSION"); v != "" {
+		return v
+	}
+	return "v1"
+}()
+
 var (
+	// Метка version здесь не для красоты: гейт канареечного релиза считает
+	// долю ошибок и задержку по версиям, а не по подам. Без неё пришлось бы
+	// соединять метрики приложения с метками подов через kube-state-metrics.
 	reqTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "http_requests_total",
 		Help: "Общее число обработанных HTTP-запросов.",
-	}, []string{"method", "path", "status"})
+	}, []string{"method", "path", "status", "version"})
 
 	reqDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "http_request_duration_seconds",
 		Help:    "Время обработки запроса в секундах.",
 		Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5},
-	}, []string{"method", "path"})
+	}, []string{"method", "path", "version"})
 
 	ordersCreated = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "shop_orders_created_total",
@@ -70,8 +94,8 @@ func instrument(path string, next http.HandlerFunc) http.HandlerFunc {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		next(sw, r)
-		reqTotal.WithLabelValues(r.Method, path, strconv.Itoa(sw.status)).Inc()
-		reqDuration.WithLabelValues(r.Method, path).Observe(time.Since(start).Seconds())
+		reqTotal.WithLabelValues(r.Method, path, strconv.Itoa(sw.status), appVersion).Inc()
+		reqDuration.WithLabelValues(r.Method, path, appVersion).Observe(time.Since(start).Seconds())
 	}
 }
 
@@ -93,9 +117,41 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("ok\n"))
 }
 
+// handleVersion отдаёт версию в чистом виде, без влияния FAIL и FLAKY.
+// По нему проверяется фактическое разделение трафика между v1 и v2,
+// поэтому он обязан отвечать даже у заведомо сломанной версии.
+func handleVersion(w http.ResponseWriter, r *http.Request) {
+	_, _ = w.Write([]byte(appVersion + "\n"))
+}
+
+// flakyPercent — доля запросов, которые падают при FLAKY=true.
+func flakyPercent() int {
+	n, err := strconv.Atoi(os.Getenv("FLAKY_PERCENT"))
+	if err != nil || n < 0 || n > 100 {
+		return 20
+	}
+	return n
+}
+
 func handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "нужен POST\n", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Сломанная версия: отказ до всякой работы, детерминированный.
+	if os.Getenv("FAIL") == "true" {
+		slog.Error("заказ отклонён намеренно", "reason", "FAIL=true", "version", appVersion)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "сервис сломан намеренно"})
+		return
+	}
+
+	// Ненадёжная версия: отказ случайный, на уровне кода, а не инъекцией
+	// в прокси. Это принципиально для Части 4: доказывать надо, что mesh
+	// прячет ошибки реального бэкенда, а не свои собственные.
+	if os.Getenv("FLAKY") == "true" && rand.IntN(100) < flakyPercent() {
+		slog.Warn("заказ отклонён случайным отказом", "reason", "FLAKY=true", "version", appVersion)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "временный сбой"})
 		return
 	}
 
@@ -202,17 +258,19 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", instrument("/health", handleHealth))
+	mux.HandleFunc("/version", instrument("/version", handleVersion))
 	mux.HandleFunc("/order", instrument("/order", handleCreateOrder))
 	mux.HandleFunc("/orders", instrument("/orders", handleListOrders))
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("api\n\n  GET  /health\n  POST /order\n  GET  /orders\n  GET  /metrics\n"))
+		_, _ = w.Write([]byte("api\n\n  GET  /health\n  GET  /version\n  POST /order\n  GET  /orders\n  GET  /metrics\n"))
 	})
 
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 
 	go func() {
-		slog.Info("api запущен", "addr", addr, "version", os.Getenv("APP_VERSION"), "pod", os.Getenv("POD_NAME"))
+		slog.Info("api запущен", "addr", addr, "version", appVersion, "pod", os.Getenv("POD_NAME"),
+			"fail", os.Getenv("FAIL") == "true", "flaky", os.Getenv("FLAKY") == "true")
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("сервер остановился", "error", err.Error())
 			os.Exit(1)
